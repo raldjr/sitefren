@@ -42,6 +42,9 @@ try {
     ps_save($s);
     foreach (['../index.html','/index.html','a/../../x.css','a/.hidden.html','php://filter','a\\x.js','x.php','x.phtml','x.phar','.htaccess','x.html/../b.js','x..html','a/%2e%2e/x.html','x.html?secret','x.html'."\0"] as $path) rejects(fn()=>ps_path($path),'Reject unsafe path '.json_encode($path));
     check(ps_path('pages/about-us.html')==='pages/about-us.html', 'Allow nested static paths');
+    check(ps_path('assets/icon.svg', true)==='assets/icon.svg', 'Allow validated SVG asset paths');
+    check(ps_disk_path('assets/icon.svg')===POCKET_ROOT.'/assets/icon.svg', 'Resolve SVG assets for publishing');
+    rejects(fn()=>ps_path('assets/icon.svg'), 'SVG files must go through validated asset uploads');
     rejects(fn()=>ps_validate_files(['index.html'=>'<?php echo 1;']), 'Reject PHP content in a static extension');
     rejects(fn()=>ps_validate_files(['index.html'=>'<?= 1 ?>']), 'Reject short PHP echo content');
     rejects(fn()=>ps_validate_files(['style.css'=>'body{}']), 'Require a homepage');

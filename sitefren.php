@@ -1031,7 +1031,7 @@ function ps_path(string $path, bool $asset = false): string {
     }
     $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
     $allowed = $asset
-        ? ['png', 'jpg', 'jpeg', 'webp', 'gif']
+        ? ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg']
         : ['html', 'css', 'js', 'json', 'txt'];
     if (!in_array($extension, $allowed, true)) {
         ps_fail('Only static website files are allowed.');
@@ -1043,7 +1043,7 @@ function ps_disk_path(string $path, bool $make = false): string {
         $path,
         in_array(
             strtolower(pathinfo($path, PATHINFO_EXTENSION)),
-            ['png', 'jpg', 'jpeg', 'webp', 'gif'],
+            ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'],
             true,
         ),
     );
