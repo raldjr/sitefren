@@ -1,6 +1,6 @@
 <?php
 /**
- * Sitefren 0.1.7 — an uploadable AI editor for small static websites.
+ * Sitefren 0.1.8 — an uploadable AI editor for small static websites.
  * SPDX-License-Identifier: AGPL-3.0-only
  * Copyright (c) 2026 Raul Aldrete Jr. and contributors
  * Built by Raul Aldrete Jr. for Sheepdog Host.
@@ -690,7 +690,7 @@
  */
 declare(strict_types=1);
 
-const PS_VERSION = '0.1.7';
+const PS_VERSION = '0.1.8';
 const PS_OUTPUT_TOKENS = 16000;
 const PS_TEXT_LIMIT = 250000;
 const PS_ASSET_LIMIT = 8000000;
@@ -2821,6 +2821,11 @@ try {
         border-color: #90a77d;
         box-shadow: 0 0 0 3px #dfe9d344;
       }
+      .composer.drag-over {
+        border-color: #66875b;
+        background: #edf3e5;
+        box-shadow: 0 0 0 3px #dfe9d3;
+      }
       .composer textarea {
         width: 100%;
         resize: none;
@@ -3494,7 +3499,7 @@ try {
     <header class="topbar">
       <div class="brand">
         <span class="mark" aria-hidden="true">s.</span>Sitefren
-        <span class="tag">Alpha 0.1.7</span>
+        <span class="tag">Alpha <?= PS_VERSION ?></span>
       </div>
       <div class="top-right" id="topActions" hidden>
         <span class="subtle" id="saveStatus">Draft saved</span
@@ -3572,7 +3577,7 @@ try {
               ><button id="sendBtn" type="submit" class="primary">Create ↗</button>
             </div>
           </form>
-          <p class="composer-note">Bringing power back to shared hosting.</p>
+          <p class="composer-note">Drop images here, or click + Add image.</p>
         </div>
       </aside>
       <section class="workbench" aria-label="Website workspace">
@@ -3669,9 +3674,9 @@ try {
           <span id="fileCount">0 files · Ready when you are</span
           ><span
             >Source: <a href="https://github.com/raldjr/sitefren" target="_blank" rel="noopener noreferrer">GitHub</a> · Built by
-            <a href="https://raul.ws" target="_blank" rel="noopener noreferrer">Raul Aldrete Jr.</a>
+            <a href="https://raul.ws?utm_source=sitefren" target="_blank" rel="noopener noreferrer">Raul Aldrete</a>
             for
-            <a href="https://sheepdoghost.com" target="_blank" rel="noopener noreferrer"
+            <a href="https://sheepdoghost.com?utm_source=sitefren" target="_blank" rel="noopener noreferrer"
               >Sheepdog Host</a
             ></span
           >
@@ -4968,25 +4973,68 @@ try {
         });
       for (const id of ['attachBtn', 'uploadBtn'])
         byId(id).addEventListener('click', () => byId('imageInput').click());
-      byId('imageInput').addEventListener('change', async () => {
-        const file = byId('imageInput').files[0];
+      byId('imageInput').addEventListener('change', () => {
+        const files = [...byId('imageInput').files];
         byId('imageInput').value = '';
-        if (!file) return;
-        if (file.size > 2000000) {
-          notice('Choose an image under 2 MB.', true);
+        uploadImages(files);
+      });
+      async function uploadImages(files) {
+        if (!files.length || busy || visual || !state?.authenticated) return;
+        if (files.some((file) => !/\.(png|jpe?g|webp|gif)$/i.test(file.name) &&
+          !['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type))) {
+          notice('Choose PNG, JPEG, WebP, or GIF images.', true);
           return;
         }
-        try {
-          const data = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result.split(',')[1]);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          });
-          await run('upload', { data }, 'Image added. Ask the AI to use it.');
-        } catch (e) {
-          notice('Could not read that image.', true);
+        if (files.some((file) => file.size > 2000000)) {
+          notice('Choose images under 2 MB each.', true);
+          return;
         }
+        setBusy(true);
+        try {
+          for (const file of files) {
+            const data = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result.split(',')[1]);
+              reader.onerror = () => reject(Error('Could not read that image.'));
+              reader.readAsDataURL(file);
+            });
+            state = await api('upload', { data });
+            render();
+          }
+          notice(files.length === 1 ? 'Image added. Ask the AI to use it.' :
+            'Images added. Ask the AI to use them.');
+        } catch (e) {
+          notice(e.message, true);
+        } finally {
+          setBusy(false);
+        }
+      }
+      const imageDropArea = byId('chatForm');
+      let imageDragDepth = 0;
+      function resetImageDrag() {
+        imageDragDepth = 0;
+        imageDropArea.classList.remove('drag-over');
+      }
+      imageDropArea.addEventListener('dragenter', (e) => {
+        if (!e.dataTransfer?.types.includes('Files')) return;
+        e.preventDefault();
+        imageDragDepth++;
+        if (!busy && !visual) imageDropArea.classList.add('drag-over');
+      });
+      imageDropArea.addEventListener('dragover', (e) => {
+        if (!e.dataTransfer?.types.includes('Files')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = busy || visual ? 'none' : 'copy';
+      });
+      imageDropArea.addEventListener('dragleave', () => {
+        imageDragDepth = Math.max(0, imageDragDepth - 1);
+        if (!imageDragDepth) resetImageDrag();
+      });
+      imageDropArea.addEventListener('drop', (e) => {
+        resetImageDrag();
+        if (!e.dataTransfer?.types.includes('Files')) return;
+        e.preventDefault();
+        uploadImages([...e.dataTransfer.files]);
       });
       function schedulePoll() {
         clearTimeout(pollTimer);

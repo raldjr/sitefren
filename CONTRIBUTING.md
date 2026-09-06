@@ -26,6 +26,8 @@ file. No formatter, JavaScript package, or PHP dependency is needed on the user'
 host. PHP uses four-space indentation; embedded HTML/CSS/JS uses two spaces.
 
 Run `php -l sitefren.php`, `php tests/core.php`, and `python3 tests/integration.py`.
+Run `node tests/image-drop.cjs` for embedded JavaScript syntax and image upload
+handler checks. This check requires only Node.js; it does not replace browser tests.
 Add focused regression checks for file safety, data loss, and credential handling.
 With cURL enabled, run `POCKET_TEST_TRANSPORT=1 python3 tests/integration.py`
 and `POCKET_TEST_TRANSPORT=1 node tests/browser.cjs` to exercise generation,
@@ -48,7 +50,10 @@ images, or private runtime files. Reproduction cases must use synthetic data.
 2. Complete a hosting compatibility and security review.
 3. Test both provider integrations with real credentials and a small prompt.
 4. Inspect the release archive for secrets and customer data.
-5. Publish source, the standalone file, release notes, and checksums together.
+5. Update `PS_VERSION`, the source header, README, installation guide, changelog,
+   and validation record. The frontend badge reads `PS_VERSION` automatically.
+6. Regenerate `SHA256SUMS` for all tracked release files except the manifest itself.
+7. Publish source, the standalone file, release notes, and checksums together.
 
 The release must clearly distinguish supported behavior, known limits, and
 features that remain planned. Submit changes through a pull request to this repository.

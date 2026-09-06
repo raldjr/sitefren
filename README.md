@@ -5,7 +5,7 @@
 An open-source AI website editor for shared hosting. Upload one PHP file,
 describe your site, and publish real HTML, CSS and JavaScript files you own.
 
-**Alpha 0.1.7** · **PHP 8.2+** · **AGPL-3.0-only**
+**Alpha 0.1.8** · **PHP 8.2+** · **AGPL-3.0-only**
 
 [Download sitefren.php](https://github.com/raldjr/sitefren/raw/refs/heads/main/sitefren.php)
 · [Get started](docs/INSTALLATION.md)
@@ -28,6 +28,7 @@ separately by the provider you connect.
 - Edit text directly in the preview without an AI request.
 - Select an element and ask AI to change it.
 - Edit source files, upload images and preview desktop/mobile layouts.
+- Drag one or more images onto the prompt area, or click **+ Add image**.
 - Restore earlier drafts with History.
 - Publish ordinary site files to your hosting, with conflict checks.
 - Choose OpenRouter or Concentrate and your own supported model.
@@ -113,9 +114,11 @@ and [the authentication overview](docs/AUTHENTICATION.md).
 ```sh
 php -l sitefren.php
 php tests/core.php
+node tests/image-drop.cjs
 POCKET_TEST_TRANSPORT=1 python3 tests/integration.py
 ```
 
+The image-drop handler checks require Node.js and no extra packages.
 Browser tests additionally require Playwright and Chromium. Tests use synthetic
 provider responses; they do not require a live API key. GitHub Actions runs core
 and HTTP checks. Browser and live-host validation are separate checks.

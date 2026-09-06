@@ -1,4 +1,20 @@
-# Alpha 0.1.7 validation
+# Alpha 0.1.8 validation
+
+Checked on September 6, 2026.
+
+- `node tests/image-drop.cjs` passed: embedded JavaScript syntax, nested drag
+  highlighting, multiple uploads, concurrent-drop prevention, format and size
+  rejection, authentication and text-editing guards, ordinary text dragging,
+  existing file-picker uploads, read errors, and server-error display.
+- `git diff --check` passed. Release version references and the SHA-256 manifest
+  were checked for consistency.
+- PHP syntax, core/HTTP integration, and full browser checks were not rerun:
+  PHP is not installed in this environment. The new handler checks use simulated
+  DOM events and upload responses; native browser drag behavior remains unverified.
+- No live provider or production-host tests were performed for 0.1.8.
+- The bundled editor screenshot is from 0.1.7 and predates the footer and drop hint.
+
+## Previous Alpha 0.1.7 validation
 
 Validated on September 6, 2026.
 

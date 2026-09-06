@@ -7,7 +7,7 @@ Built by **Raul Aldrete Jr.** for [Sheepdog Host](https://sheepdoghost.com).
 Upload one PHP file. Describe your website. Preview it. Publish real HTML, CSS,
 and JavaScript on the hosting account you already own.
 
-Sitefren is an **Alpha 0.1.7** application for small static websites, licensed under AGPL-3.0-only.
+Sitefren is an **Alpha 0.1.8** application for small static websites, licensed under AGPL-3.0-only.
 
 **One file to upload is a project requirement.** The customer uploads
 `sitefren.php`; the editor creates its own private state and published site files.
@@ -105,7 +105,7 @@ updating the draft. Malformed, oversized, conflicting, or truncated edits leave
 the draft intact.
 
 There is one non-streaming inference request per chat turn, with an
-8,000-output-token cap. The AI wait limit now defaults to **180 seconds**; Settings
+16,000-output-token cap. The AI wait limit now defaults to **180 seconds**; Settings
 allows **30–300 seconds**. Connection establishment has a separate 10-second
 limit. Model support, context windows, latency, and costs vary.
 
@@ -127,6 +127,19 @@ A failed local request may still be billed upstream. Requests are not
 automatically retried, and this version does not alter provider retention,
 ZDR, routing policy, or the chosen model to recover from errors. Provider
 failures are classified into readable messages without echoing raw error bodies.
+
+## Add images
+
+Drag one or more PNG, JPEG, WebP, or GIF files onto the prompt area. The area
+highlights while dragging. You can also click **+ Add image**, or use **+ Upload
+image** in Images, to choose a file.
+
+Each image must be under 2 MB. The project supports up to 12 images, 8 MB combined,
+and 20 megapixels per image. Uploads pause other editor actions and are unavailable
+during generation or direct text editing. Files in a drop upload one at a time;
+if an upload fails, earlier successful uploads remain and later files are not sent.
+Check Images before retrying. Adding an image does not make an AI request; ask the
+AI how to use it, review the draft, and Publish when ready.
 
 ## Edit text directly on the page
 
