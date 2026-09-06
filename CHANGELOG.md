@@ -1,5 +1,12 @@
 # Changes
 
+## Unreleased
+
+- Use the supplied Sitefren SVG as the embedded browser favicon.
+- Accept static SVG uploads through the picker and drag and drop, validating
+  elements, attributes, and references before storage and publication. SVG support
+  requires PHP DOM/XML; existing image size limits still apply.
+
 ## 0.1.8 — September 6, 2026
 
 - Accept one or more images dropped onto the prompt area, with a highlighted

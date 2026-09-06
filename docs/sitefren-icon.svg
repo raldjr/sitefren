@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Sitefren smiling browser</title>
+  <style>
+    .brand { fill: #CC3D00; }
+    .window { fill: #FFFFFF; }
+  </style>
+  <rect class="brand" width="512" height="512" rx="88"/>
+  <rect class="window" x="74" y="86" width="364" height="328" rx="40"/>
+  <g class="brand">
+    <circle cx="132" cy="139" r="22"/>
+    <circle cx="191" cy="139" r="22"/>
+    <rect x="74" y="179" width="364" height="20"/>
+    <circle cx="186" cy="270" r="26"/>
+    <circle cx="326" cy="270" r="26"/>
+    <path d="M186 317 C222 355 290 355 326 317 A16 16 0 0 1 349 339 C301 391 211 391 163 339 A16 16 0 0 1 186 317Z"/>
+  </g>
+</svg>

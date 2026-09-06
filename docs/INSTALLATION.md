@@ -67,7 +67,7 @@ so an existing user may need to sign in again but does not repeat setup.
 - Direct text editing in Preview, saved to the draft without an AI request.
 - Select an element in Preview and ask the AI for a targeted change.
 - Latest-request diagnostics with transport evidence and explicit unknown causes.
-- PNG, JPEG, WebP, and GIF uploads that can be used by the AI.
+- PNG, JPEG, WebP, GIF, and static SVG uploads that can be used by the AI.
 - A plain-text file editor and the latest 10 draft restore points.
 - Publish to the local filesystem, with conflict detection and rollback data.
 - Host-provided API credentials and optional provisioned sign-in settings.
@@ -304,8 +304,9 @@ mix of old and new files. Test on a separate folder before customer deployment.
 
 Limits: 30 text files, 120 KB per text file, 250 KB total text, 12 uploaded images,
 2 MB per image, 8 MB total image data, and 10 text-history snapshots. Filenames
-use simple relative paths. PHP, `.htaccess`, executable uploads, and SVG uploads
-are not accepted. Public file modes are `0644`; private state and locks use
+use simple relative paths. PHP, `.htaccess`, and executable uploads are not accepted. SVG uploads require
+the PHP DOM/XML extension and must use static SVG elements without scripts,
+event handlers, external references, or embedded HTML. Public file modes are `0644`; private state and locks use
 `0600`. The PHP worker must run as the hosting account's owner.
 
 ## Local development and checks

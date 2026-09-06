@@ -697,6 +697,69 @@ const PS_ASSET_LIMIT = 8000000;
 const PS_FILE_LIMIT = 120000;
 const PS_HISTORY_LIMIT = 10;
 
+// Validate static SVG before storing it: published assets can be opened directly.
+function ps_validate_svg(string $bytes): void {
+    if ($bytes === '' || str_contains($bytes, "\0") || !preg_match('//u', $bytes)) {
+        ps_fail('Choose a valid UTF-8 SVG image.');
+    }
+    if (!class_exists('DOMDocument')) {
+        ps_fail('SVG uploads require the PHP DOM/XML extension on this host.');
+    }
+    if (preg_match('/<!DOCTYPE|<!ENTITY|<\?(?!xml\s)/i', $bytes)) {
+        ps_fail('Choose a static SVG without document types or processing instructions.');
+    }
+    $previous = libxml_use_internal_errors(true);
+    try {
+        $document = new DOMDocument();
+        $valid = $document->loadXML($bytes, LIBXML_NONET);
+    } finally {
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+    }
+    if (!$valid || !$document->documentElement || $document->documentElement->localName !== 'svg') {
+        ps_fail('Choose a valid SVG image.');
+    }
+    $elements = explode(' ', 'svg g defs title desc style path rect circle ellipse line polyline polygon text tspan textPath use symbol clipPath mask linearGradient radialGradient stop pattern marker');
+    $attributes = explode(' ', 'id class role aria-label aria-labelledby aria-hidden version viewBox width height x y x1 y1 x2 y2 cx cy r rx ry d points transform fill fill-rule fill-opacity stroke stroke-width stroke-linecap stroke-linejoin stroke-miterlimit stroke-dasharray stroke-dashoffset stroke-opacity opacity style clip-path clip-rule mask filter preserveAspectRatio gradientUnits gradientTransform spreadMethod offset stop-color stop-opacity fx fy fr patternUnits patternContentUnits patternTransform markerWidth markerHeight markerUnits refX refY orient font-family font-size font-weight font-style text-anchor dominant-baseline alignment-baseline letter-spacing word-spacing dx dy rotate textLength lengthAdjust href startOffset');
+    foreach ($document->getElementsByTagName('*') as $element) {
+        if ($element->namespaceURI !== 'http://www.w3.org/2000/svg' || !in_array($element->localName, $elements, true)) {
+            ps_fail('SVG contains unsupported elements. Use static SVG artwork.');
+        }
+        foreach ($element->attributes as $attribute) {
+            if (($attribute->namespaceURI && !($attribute->namespaceURI === 'http://www.w3.org/1999/xlink' && $attribute->localName === 'href')) || !in_array($attribute->localName, $attributes, true)) {
+                ps_fail('SVG contains unsupported attributes. Use static SVG artwork.');
+            }
+            if ($attribute->localName === 'href' && !preg_match('/^#[A-Za-z_][A-Za-z0-9_.:-]*$/D', $attribute->value)) {
+                ps_fail('SVG references must point inside the image.');
+            }
+        }
+        $values = [];
+        foreach ($element->attributes as $attribute) {
+            $values[] = $attribute->value;
+        }
+        if ($element->localName === 'style') {
+            $values[] = $element->textContent;
+        }
+        foreach ($values as $value) {
+            // Disallow CSS escapes, comments and at-rules; only local paint references.
+            $value = preg_replace('/url\(\s*[\'\"]?#[A-Za-z_][A-Za-z0-9_.:-]*[\'\"]?\s*\)/i', '', $value);
+            preg_match_all('/([a-zA-Z_-][a-zA-Z0-9_-]*)\s*\(/', $value, $functions);
+            foreach ($functions[1] as $function) {
+                if (!in_array(strtolower($function), ['rgb', 'rgba', 'hsl', 'hsla', 'calc', 'min', 'max', 'clamp', 'matrix', 'translate', 'translatex', 'translatey', 'scale', 'scalex', 'scaley', 'rotate', 'skewx', 'skewy'], true)) {
+                    ps_fail('SVG contains an unsupported style function.');
+                }
+            }
+            if (preg_match('/[\\\\@<>]|\/\*|url\s*\(|expression\s*\(|javascript\s*:|data\s*:/i', $value)) {
+                ps_fail('SVG must not contain active content or external resources.');
+            }
+        }
+    }
+    $xpath = new DOMXPath($document);
+    if ($xpath->query('//processing-instruction()')->length) {
+        ps_fail('SVG processing instructions are not supported.');
+    }
+}
+
 function ps_fail(string $message, int $status = 400): never {
     throw new RuntimeException($message, $status);
 }
@@ -2501,10 +2564,15 @@ if (isset($_GET['action'])) {
                     }
                     $bytes = base64_decode($data, true);
                     if ($bytes === false || strlen($bytes) > 2000000) {
-                        ps_fail('Upload a PNG, JPEG, WebP, or GIF under 2 MB.');
+                        ps_fail('Upload a PNG, JPEG, WebP, GIF, or SVG under 2 MB.');
                     }
                     $info = @getimagesizefromstring($bytes);
+                    if (!$info) {
+                        ps_validate_svg($bytes);
+                        $info = [0, 0, 'mime' => 'image/svg+xml'];
+                    }
                     $types = [
+                        'image/svg+xml' => 'svg',
                         'image/png' => 'png',
                         'image/jpeg' => 'jpg',
                         'image/webp' => 'webp',
@@ -2516,7 +2584,7 @@ if (isset($_GET['action'])) {
                         $info[0] * $info[1] > 20000000
                     ) {
                         ps_fail(
-                            'Choose a valid image under 20 megapixels. SVG and server code are not supported.',
+                            'Choose a valid static image under 20 megapixels. Server code is not supported.',
                         );
                     }
                     $size = strlen($bytes);
@@ -2586,6 +2654,7 @@ try {
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="color-scheme" content="light" />
     <title>Sitefren · Your site, in your hands</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiByb2xlPSJpbWciIGFyaWEtbGFiZWxsZWRieT0idGl0bGUiPgogIDx0aXRsZSBpZD0idGl0bGUiPlNpdGVmcmVuIHNtaWxpbmcgYnJvd3NlcjwvdGl0bGU+CiAgPHN0eWxlPgogICAgLmJyYW5kIHsgZmlsbDogI0NDM0QwMDsgfQogICAgLndpbmRvdyB7IGZpbGw6ICNGRkZGRkY7IH0KICA8L3N0eWxlPgogIDxyZWN0IGNsYXNzPSJicmFuZCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHJ4PSI4OCIvPgogIDxyZWN0IGNsYXNzPSJ3aW5kb3ciIHg9Ijc0IiB5PSI4NiIgd2lkdGg9IjM2NCIgaGVpZ2h0PSIzMjgiIHJ4PSI0MCIvPgogIDxnIGNsYXNzPSJicmFuZCI+CiAgICA8Y2lyY2xlIGN4PSIxMzIiIGN5PSIxMzkiIHI9IjIyIi8+CiAgICA8Y2lyY2xlIGN4PSIxOTEiIGN5PSIxMzkiIHI9IjIyIi8+CiAgICA8cmVjdCB4PSI3NCIgeT0iMTc5IiB3aWR0aD0iMzY0IiBoZWlnaHQ9IjIwIi8+CiAgICA8Y2lyY2xlIGN4PSIxODYiIGN5PSIyNzAiIHI9IjI2Ii8+CiAgICA8Y2lyY2xlIGN4PSIzMjYiIGN5PSIyNzAiIHI9IjI2Ii8+CiAgICA8cGF0aCBkPSJNMTg2IDMxNyBDMjIyIDM1NSAyOTAgMzU1IDMyNiAzMTcgQTE2IDE2IDAgMCAxIDM0OSAzMzkgQzMwMSAzOTEgMjExIDM5MSAxNjMgMzM5IEExNiAxNiAwIDAgMSAxODYgMzE3WiIvPgogIDwvZz4KPC9zdmc+Cg==" />
     <style nonce="<?= htmlspecialchars($nonce, ENT_QUOTES) ?>">
       :root {
         --ink: #252c2a;
@@ -3748,7 +3817,7 @@ try {
         ><button id="acceptConfirm" class="primary">Continue</button>
       </div>
     </dialog>
-    <input type="file" id="imageInput" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+    <input type="file" id="imageInput" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg" hidden />
     <div id="toast" class="toast" role="status" hidden></div>
     <script nonce="<?= htmlspecialchars($nonce, ENT_QUOTES) ?>">
       'use strict';
@@ -4979,9 +5048,9 @@ try {
       });
       async function uploadImages(files) {
         if (!files.length || busy || visual || !state?.authenticated) return;
-        if (files.some((file) => !/\.(png|jpe?g|webp|gif)$/i.test(file.name) &&
-          !['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type))) {
-          notice('Choose PNG, JPEG, WebP, or GIF images.', true);
+        if (files.some((file) => !/\.(png|jpe?g|webp|gif|svg)$/i.test(file.name) &&
+          !['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'].includes(file.type))) {
+          notice('Choose PNG, JPEG, WebP, GIF, or SVG images.', true);
           return;
         }
         if (files.some((file) => file.size > 2000000)) {

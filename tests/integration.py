@@ -69,6 +69,9 @@ with tempfile.TemporaryDirectory(prefix='pocket-http-') as tmp:
         homepage=client.open(base+'/').read().decode()
         check('Something good is on its way.' in homepage and 'builder-state' not in homepage,'Fresh root serves a placeholder instead of a file list')
         check('noindex, nofollow' in homepage,'Placeholder asks search engines not to index it')
+        editor=client.open(base+'/sitefren.php').read().decode()
+        icon=re.search(r'<link rel="icon" type="image/svg\+xml" href="data:image/svg\+xml;base64,([^"]+)"', editor)
+        check(icon and base64.b64decode(icon.group(1))==(ROOT/'docs/sitefren-icon.svg').read_bytes(),'Editor embeds the supplied Sitefren favicon')
         code=re.search(r'Setup code: ([A-Za-z0-9_-]+)',(root/'builder-state.php').read_text()).group(1)
         check(code not in json.dumps(state),'Ownership code is not returned over HTTP')
         check(request('setup',{'code':code,'password':'example-testing-passphrase'},token=False)[0]==403,'Reject setup without CSRF')
@@ -95,6 +98,15 @@ with tempfile.TemporaryDirectory(prefix='pocket-http-') as tmp:
         status,state=request('upload',{'data':png})
         check(status==200 and len(state['assets'])==1,'Valid image uploads are stored')
         check(request('upload',{'data':base64.b64encode(b'<svg onload="alert(1)"></svg>').decode()})[0]==400,'Active SVG uploads are rejected')
+        svg=(ROOT/'docs/sitefren-icon.svg').read_bytes()
+        status,state=request('upload',{'data':base64.b64encode(svg).decode()})
+        check(status==200 and any(a['mime']=='image/svg+xml' for a in state['assets'].values()),'Static SVG with stylesheet uploads successfully')
+        for invalid in [b'', b'<svg', b'<!DOCTYPE svg [<!ENTITY x SYSTEM "file:///etc/passwd">]><svg xmlns="http://www.w3.org/2000/svg">&x;</svg>', svg.decode().encode('utf-16')]:
+            check(request('upload',{'data':base64.b64encode(invalid).decode()})[0]==400,'Reject malformed SVG, entities, or unsupported encoding')
+        svg_path=next(p for p,a in state['assets'].items() if a['mime']=='image/svg+xml')
+        for content in ['<script>alert(1)</script>', '<foreignObject/>', '<style>svg { background: image-set(&quot;remote.png&quot; 1x); }</style>', '<use href="https://example.com/a.svg#x"/>', '<style>@import "https://example.com/a.css";</style>', '<rect style="fill:url(https://example.com/x)"/>', '<rect onclick="alert(1)"/>']:
+            unsafe=('<svg xmlns="http://www.w3.org/2000/svg">'+content+'</svg>').encode()
+            check(request('upload',{'data':base64.b64encode(unsafe).decode()})[0]==400,'Reject unsafe SVG: '+content)
         status,state=request('settings',{'provider':'concentrate','model':'fixture-model','api_key':'not-a-real-secret-fixture'})
         check(status==200 and state['config']['has_key'] and 'not-a-real-secret-fixture' not in json.dumps(state),'Saving provider credentials does not echo them to the client')
         status,state=request('settings',{'clear_key':True})
@@ -126,6 +138,7 @@ with tempfile.TemporaryDirectory(prefix='pocket-http-') as tmp:
             check(state['files']==prior_files and not state['pending'],'Output cutoff preserves all draft files and releases the job')
         status,state=request('publish',{})
         check(status==200 and (root/'index.html').read_text()==original and not state['dirty'],'Publishing writes the website to disk')
+        check((root/svg_path).read_bytes()==svg,'Publishing preserves the validated SVG asset')
         with client.open(base+'/index.html') as r: check(r.status==200 and 'forma.' in r.read().decode(),'Published website is served independently of the editor')
         with client.open(base+'/sitefren.php?preview=1') as r:
             csp=r.headers.get('Content-Security-Policy','')

@@ -60,7 +60,7 @@ const settled = () => new Promise(resolve => setImmediate(resolve));
   await settled();
   assert.equal(uploads.length, 2, 'Multiple files upload sequentially; concurrent drop is ignored');
   assert(!context.busy);
-  for (const file of [{ name: 'unsafe.svg', type: 'image/svg+xml', size: 100 }, { ...png, size: 2000001 }]) {
+  for (const file of [{ name: 'unsafe.html', type: 'text/html', size: 100 }, { ...png, size: 2000001 }]) {
     handlers['chatForm:drop'](event([file]));
     await settled();
     assert.equal(notices.at(-1)[1], true);
@@ -77,10 +77,10 @@ const settled = () => new Promise(resolve => setImmediate(resolve));
   const text = event([], ['text/plain']);
   handlers['chatForm:drop'](text);
   assert(!text.prevented, 'Ordinary text dragging is preserved');
-  elements.imageInput.files = [png];
+  elements.imageInput.files = [{ name: 'icon.svg', type: 'image/svg+xml', size: 100 }];
   handlers['imageInput:change']();
   await settled();
-  assert.equal(uploads.length, 3, 'Existing file picker still uploads');
+  assert.equal(uploads.length, 3, 'File picker accepts SVG uploads');
   assert.equal(elements.imageInput.value, '');
   handlers['chatForm:drop'](event([{ ...png, unreadable: true }]));
   await settled();
