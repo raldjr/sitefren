@@ -1,5 +1,20 @@
 # Changes
 
+## 0.1.8 — September 6, 2026
+
+- Accept one or more images dropped onto the prompt area, with a highlighted
+  drop target and visible instructions. Keep the existing file picker available.
+- Upload dropped images sequentially using the existing server validation.
+  Reject unsupported formats and files over 2 MB before uploading, and prevent
+  uploads during other operations or direct text editing.
+- Display Raul Aldrete in the editor footer. Add `utm_source=sitefren` to the
+  author and Sheepdog Host links, retaining new-tab behavior and link protection.
+- Derive the frontend version badge from the application's version constant.
+- Add dependency-free Node.js checks for image-drop and file-picker handlers.
+
+Upgrade by replacing only `sitefren.php`; keep private state and published files.
+JavaScript checks passed; PHP and full browser checks were not rerun for this release.
+
 ## Repository publication — September 6, 2026
 
 - Publish Alpha 0.1.7 source, download link, screenshot and contributor materials.
