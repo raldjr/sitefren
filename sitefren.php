@@ -2513,8 +2513,7 @@ if (isset($_GET['action'])) {
                     if (
                         !$info ||
                         !isset($types[$info['mime']]) ||
-                        $info[0] * $info[1] > 20000000 ||
-                        str_contains($bytes, '<?')
+                        $info[0] * $info[1] > 20000000
                     ) {
                         ps_fail(
                             'Choose a valid image under 20 megapixels. SVG and server code are not supported.',
