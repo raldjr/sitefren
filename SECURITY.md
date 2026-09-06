@@ -91,7 +91,7 @@ and the live files so the original journal remains available.
 
 ## Reporting
 
-Report suspected vulnerabilities privately to **hi@raul.ws**, with the subject
+Report suspected vulnerabilities privately to **hello@raul.ws**, with the subject
 “Sitefren security report”. Describe the affected version and use a minimal
 synthetic reproduction. Do not include real credentials or customer state.
 Do not publish exploit details in a public issue while coordinating a fix.
