@@ -1,0 +1,202 @@
+<?php
+declare(strict_types=1);
+define('POCKET_TESTING', true);
+define('POCKET_ROOT', sys_get_temp_dir() . '/pocket-test-' . bin2hex(random_bytes(8)));
+mkdir(POCKET_ROOT, 0700);
+require dirname(__DIR__) . '/sitefren.php';
+$passed = 0;
+function check(bool $ok, string $name): void { global $passed; if (!$ok) throw new RuntimeException('FAIL: ' . $name); $passed++; echo 'PASS: ' . $name . "\n"; }
+function rejects(callable $fn, string $name): void { try { $fn(); } catch (RuntimeException $e) { check(true, $name); return; } check(false,$name); }
+function clean(string $root): void { foreach (scandir($root) as $name) { if ($name==='.' || $name==='..') continue; $p=$root.'/'.$name; if (is_dir($p)&&!is_link($p)) clean($p); else unlink($p); } rmdir($root); }
+try {
+    check(ps_transport_cause(28,0)==='local_wait_limit','A local cURL timeout does not blame the provider or host');
+    check(ps_transport_cause(0,504)==='provider_http_error','An upstream HTTP timeout is distinct from the local wait limit');
+    check(ps_transport_cause(6,0)==='dns_failure' && ps_transport_cause(60,0)==='tls_failure','DNS and TLS failures have separate evidence categories');
+    check(ps_transport_cause(0,200)==='response_received','A successful HTTP response does not imply a saved draft');
+    $s = ps_locked(fn($s)=>$s);
+    check($s['password_hash']==='' && strlen($s['setup_code'])===32, 'First run creates a strong ownership code');
+    check(str_starts_with(file_get_contents(ps_state_path()), '<?php'), 'Private state is PHP guarded');
+    check((fileperms(ps_state_path()) & 0777) === 0600, 'Private state uses owner-only permissions');
+    check(ps_locked(fn($s)=>$s['setup_code'])===$s['setup_code'], 'Initialization does not reset an existing project');
+    $placeholder = file_get_contents(POCKET_ROOT.'/index.html');
+    check(str_contains($placeholder, 'Something good is on its way.'), 'Startup creates a public placeholder homepage');
+    check($s['published']['index.html'] === hash('sha256', $placeholder) && !$s['files'] && $s['published_at'] === null, 'Placeholder is owned without publishing a draft');
+    check(!str_contains($placeholder, $s['setup_code']) && !str_contains($placeholder, 'builder'), 'Public placeholder contains no setup code or editor link');
+    unlink(POCKET_ROOT.'/index.html');
+    foreach (['index.php', 'index.htm', 'INDEX.HTML', 'default.html'] as $existing) {
+        file_put_contents(POCKET_ROOT.'/'.$existing, 'Existing homepage');
+        $empty = ps_new_state(); ps_ensure_homepage($empty);
+        check(!file_exists(POCKET_ROOT.'/index.html') && file_get_contents(POCKET_ROOT.'/'.$existing) === 'Existing homepage', 'Preserve existing '.$existing);
+        unlink(POCKET_ROOT.'/'.$existing);
+    }
+    symlink(POCKET_ROOT.'/missing-target', POCKET_ROOT.'/index.html');
+    $empty = ps_new_state(); ps_ensure_homepage($empty);
+    check(is_link(POCKET_ROOT.'/index.html') && !file_exists(POCKET_ROOT.'/missing-target'), 'Preserve a dangling homepage symlink');
+    unlink(POCKET_ROOT.'/index.html');
+    mkdir(POCKET_ROOT.'/index.html');
+    ps_ensure_homepage($empty);
+    check(is_dir(POCKET_ROOT.'/index.html'), 'Preserve an existing homepage directory');
+    rmdir(POCKET_ROOT.'/index.html');
+    $empty = ps_new_state(); ps_ensure_homepage($empty);
+    check(isset($empty['published']['index.html']), 'An older empty installation gains a managed placeholder');
+    ps_save($s);
+    foreach (['../index.html','/index.html','a/../../x.css','a/.hidden.html','php://filter','a\\x.js','x.php','x.phtml','x.phar','.htaccess','x.html/../b.js','x..html','a/%2e%2e/x.html','x.html?secret','x.html'."\0"] as $path) rejects(fn()=>ps_path($path),'Reject unsafe path '.json_encode($path));
+    check(ps_path('pages/about-us.html')==='pages/about-us.html', 'Allow nested static paths');
+    rejects(fn()=>ps_validate_files(['index.html'=>'<?php echo 1;']), 'Reject PHP content in a static extension');
+    rejects(fn()=>ps_validate_files(['index.html'=>'<?= 1 ?>']), 'Reject short PHP echo content');
+    rejects(fn()=>ps_validate_files(['style.css'=>'body{}']), 'Require a homepage');
+    rejects(fn()=>ps_validate_files(['index.html'=>str_repeat('a',PS_FILE_LIMIT+1)]), 'Enforce file size limit');
+    ps_apply($s,ps_demo(),'Sample');
+    check(isset($s['files']['index.html']) && $s['revision']===1, 'Sample creates a real editable draft');
+    $original=$s['files']['index.html'];
+    $selection=['path'=>'index.html','selector'=>'body > main:nth-of-type(1) > section:nth-of-type(1)','tag'=>'section','text'=>'Selected card','html'=>'<section>Selected card</section>','html_truncated'=>false];
+    check(ps_selection_context($s,$selection+['api_key'=>'do-not-forward'])===$selection,'Selected context is bounded to recognized fields');
+    rejects(fn()=>ps_selection_context($s,array_replace($selection,['path'=>'missing.html'])),'Reject selection from an unmanaged page');
+    rejects(fn()=>ps_selection_context($s,array_replace($selection,['selector'=>'body, *'])),'Reject arbitrary selector expressions');
+    rejects(fn()=>ps_selection_context($s,array_replace($selection,['html'=>str_repeat('a',12001)])),'Bound selected HTML before a provider request');
+    foreach(['openrouter','concentrate'] as $provider){
+        $payload=ps_provider_payload(['provider'=>$provider,'api_key'=>'fixture-key','model'=>'fixture-model'],$s,'Make this red',$selection);
+        $input=$provider==='concentrate'?$payload['input']:$payload['messages'][1]['content'];
+        $context=json_decode(substr($input,strlen('CURRENT PROJECT JSON: ')),true);
+        check($context['selected_element']===$selection && $context['request']==='Make this red',$provider.' receives the actual selected element and request');
+    }
+    foreach (['openrouter', 'concentrate'] as $provider) {
+        $payload = ps_provider_payload(['provider'=>$provider,'api_key'=>'fixture-key','model'=>'fixture-model'],$s,'Build a website');
+        $format = $provider === 'openrouter' ? $payload['response_format']['json_schema'] : $payload['text']['format'];
+        check($format['strict'] === true && $format['schema'] === ps_edit_schema(), $provider.' requests the complete strict edit schema');
+    }
+    check($payload['text']['format']['type'] === 'json_schema', 'Concentrate uses Responses API structured output');
+    $payload = ps_provider_payload(['provider'=>'openrouter','api_key'=>'fixture-key','model'=>'fixture-model'],$s,'Build');
+    check($payload['provider']['require_parameters'] === true, 'OpenRouter requires a route that accepts structured output');
+    $invalid = ['choices'=>[['finish_reason'=>'stop','message'=>['content'=>'<html>Not JSON</html>']]]];
+    rejects(fn()=>ps_parse_provider('openrouter',$invalid),'Plain HTML cannot bypass edit validation');
+    check($GLOBALS['ps_transport']['response_stage'] === 'invalid_json' && isset($GLOBALS['ps_transport']['json_error_code']), 'Malformed output retains a safe parser diagnosis');
+    check(!str_contains(ps_json($GLOBALS['ps_transport']), '<html>'), 'Diagnostics do not store model text');
+    rejects(fn()=>ps_parse_provider('concentrate',['status'=>'incomplete','incomplete_details'=>['reason'=>'max_output_tokens']]), 'Reject provider-reported incomplete output');
+    check($GLOBALS['ps_transport']['response_stage'] === 'output_limit','Output-limit evidence is distinct from malformed JSON');
+    rejects(fn()=>ps_parse_provider('openrouter',['choices'=>[['message'=>['refusal'=>'private refusal text']]]]), 'Reject a provider refusal without exposing its text');
+    check($GLOBALS['ps_transport']['response_stage'] === 'refused','Refusal has a separate diagnosis');
+    $part = ['type'=>'output_text','text'=>'{"message":"Building","files":[{"path":"index.html","content":"unfinished'];
+    $cutoff = ['status'=>'completed','usage'=>['output_tokens'=>PS_OUTPUT_TOKENS],'output'=>[['type'=>'message','content'=>[$part]]]];
+    rejects(fn()=>ps_parse_provider('concentrate',$cutoff), 'Reject a truncated response even when Concentrate marks it completed');
+    check($GLOBALS['ps_transport']['response_stage']==='suspected_output_limit' && $GLOBALS['ps_transport']['output_tokens']===PS_OUTPUT_TOKENS, 'Invalid JSON at the token cap records suspected output exhaustion');
+    $cutoff['usage']['output_tokens']=100;
+    rejects(fn()=>ps_parse_provider('concentrate',$cutoff), 'Reject malformed output below the token cap');
+    check($GLOBALS['ps_transport']['response_stage']==='invalid_json', 'Malformed JSON below the cap is not labeled token exhaustion');
+    $validEdit = ['message'=>'Done','files'=>[],'delete'=>[]];
+    $cutoff['usage']['output_tokens']=PS_OUTPUT_TOKENS;
+    $cutoff['output'][0]['content'][0]['text']=ps_json($validEdit);
+    check(ps_parse_provider('concentrate',$cutoff)===$validEdit, 'A valid complete edit at the token cap is still accepted');
+    foreach (['openrouter','concentrate'] as $provider) {
+        $payload=ps_provider_payload(['provider'=>$provider,'api_key'=>'fixture-key','model'=>'fixture-model'],$s,'Build');
+        check(($payload['max_tokens'] ?? $payload['max_output_tokens'])===16000, $provider.' requests the larger output allowance');
+    }
+    $patchState=ps_new_state();
+    $patchState['files']=['index.html'=>'<!doctype html><h1>Welcome</h1>','styles.css'=>'body { color: black; }'];
+    $patch=['message'=>'Updated','files'=>[],'delete'=>[],'edits'=>[['path'=>'styles.css','find'=>'color: black','replace'=>'color: red']]];
+    ps_apply($patchState,$patch,'Make red');
+    check($patchState['files']['styles.css']==='body { color: red; }' && $patchState['files']['index.html']==='<!doctype html><h1>Welcome</h1>', 'Exact replacements update CSS without returning or changing HTML');
+    check(count($patchState['history'])===1,'Replacement edits retain undo history');
+    foreach (['missing','color: blue',''] as $find) {
+        $bad=$patch; $bad['edits'][0]['find']=$find; $beforePatch=$patchState;
+        rejects(function()use(&$patchState,$bad){ps_apply($patchState,$bad,'Bad');},'Reject unmatched or empty replacement '.json_encode($find));
+        check($patchState===$beforePatch,'Failed replacement preserves every state field');
+    }
+    $bad=$patch; $bad['edits']=[['path'=>'styles.css','find'=>'color: red','replace'=>'color: blue'],['path'=>'index.html','find'=>'missing','replace'=>'oops']];
+    $beforePatch=$patchState;
+    rejects(function()use(&$patchState,$bad){ps_apply($patchState,$bad,'Bad batch');},'Reject a batch with a later failing replacement');
+    check($patchState===$beforePatch,'A later replacement failure does not partly save earlier changes');
+    $bad=$patch; $bad['edits'][0]=['path'=>'index.html','find'=>'Welcome','replace'=>'<?php echo 1; ?>'];
+    rejects(function()use(&$patchState,$bad){ps_apply($patchState,$bad,'Unsafe');},'Replacement output still rejects PHP');
+    $bad=$patch; $bad['files']=[['path'=>'styles.css','content'=>'body{}']];
+    rejects(function()use(&$patchState,$bad){ps_apply($patchState,$bad,'Conflict');},'Reject full-file and patch operations on the same file');
+    $patchState['files']['index.html']='<h1>Same</h1><p>Same</p>';
+    $bad=$patch; $bad['edits'][0]=['path'=>'index.html','find'=>'Same','replace'=>'Other'];
+    rejects(function()use(&$patchState,$bad){ps_apply($patchState,$bad,'Ambiguous');},'Reject ambiguous repeated replacement targets');
+    $before=$s;
+    rejects(function()use(&$s){ps_apply($s,['message'=>'bad','files'=>[['path'=>'index.html','content'=>'changed'],['path'=>'../bad.html','content'=>'oops']]],'Bad edit');},'Reject an entire edit batch with one unsafe path');
+    check($s===$before,'Invalid edit does not partly mutate the draft');
+    rejects(function()use(&$s){ps_apply($s,['message'=>'bad','files'=>[['path'=>'index.html','content'=>'a'],['path'=>'index.html','content'=>'b']]],'Bad edit');},'Reject duplicate file edits');
+    rejects(function()use(&$s){ps_apply($s,['message'=>'bad','files'=>[],'delete'=>['index.html'],'extra'=>true],'Delete');},'Reject deleting the only homepage');
+    ps_apply($s,['message'=>'Added a page','files'=>[['path'=>'about.html','content'=>'<!doctype html><h1>About</h1>']],'delete'=>[]],'Add about');
+    check($s['files']['index.html']===$original && isset($s['files']['about.html']),'Incremental edits preserve unchanged files');
+    check($s['history'][0]['files']===['index.html'=>$original],'History retains the previous draft');
+    for($i=0;$i<12;$i++)ps_apply($s,['message'=>'edit','files'=>[['path'=>'about.html','content'=>'Version '.$i]],'delete'=>[]],'Edit '.$i);
+    check(count($s['history'])===PS_HISTORY_LIMIT,'History retention is bounded');
+    rejects(fn()=>ps_check_revision($s,['revision'=>0]),'Reject stale browser revisions');
+    $pending=$s; $pending['pending']=['id'=>'job','expires'=>time()+60];
+    rejects(fn()=>ps_check_revision($pending,['revision'=>$pending['revision']]),'Reject a competing generation or edit');
+    foreach(['openrouter','concentrate'] as $provider){
+        $config=['provider'=>$provider,'api_key'=>'fixture-not-a-real-key','model'=>'fixture-model'];
+        $payload=ps_provider_payload($config,$s,'Make the title warmer');
+        check(!str_contains(ps_json($payload),$config['api_key']),$provider.' excludes the credential from model context');
+        check(str_contains(ps_json($payload),'Make the title warmer') && str_contains(ps_json($payload),'index.html'),$provider.' receives the prompt and current files');
+        $result=ps_generate($config,$s,'Add a contact page',function($actual,$request)use($provider){
+            if($actual!==$provider||$request['model']!=='fixture-model')throw new RuntimeException('Wrong adapter');
+            $text=ps_json(['message'=>'Added contact','files'=>[['path'=>'contact.html','content'=>'<!doctype html><h1>Contact</h1>']],'delete'=>[]]);
+            return $provider==='openrouter'?['choices'=>[['finish_reason'=>'stop','message'=>['content'=>$text]]]]:['status'=>'completed','output'=>[['type'=>'message','content'=>[['type'=>'output_text','text'=>$text]]]]];
+        });
+        check($result['files'][0]['path']==='contact.html',$provider.' adapter parses an editable response');
+    }
+    rejects(fn()=>ps_parse_provider('openrouter',['choices'=>[['finish_reason'=>'length','message'=>['content'=>'{"message":"partial']]]]),'Reject truncated OpenRouter output');
+    rejects(fn()=>ps_parse_provider('concentrate',['status'=>'incomplete','output'=>[]]),'Reject incomplete Concentrate output');
+    rejects(fn()=>ps_parse_provider('openrouter',['choices'=>[['message'=>['content'=>'not JSON']]]]),'Reject malformed model output');
+    rejects(fn()=>ps_validate_config(['provider'=>'custom','model'=>'m','api_key'=>'k']),'Fixed provider list blocks arbitrary network destinations');
+    rejects(fn()=>ps_validate_config(['provider'=>'openrouter','model'=>'m','api_key'=>"key\r\nInjected: yes"]),'Reject header injection in credentials');
+    check(ps_ai_timeout(ps_config($s))===180,'Older state files receive the new 180-second default');
+    rejects(fn()=>ps_validate_config(['provider'=>'openrouter','model'=>'m','api_key'=>'k','timeout'=>301]),'Reject wait limits above five minutes');
+    rejects(fn()=>ps_validate_config(['provider'=>'openrouter','model'=>'m','api_key'=>'k','timeout'=>'180']),'Reject malformed timeout values');
+    putenv('POCKET_AI_TIMEOUT=240');check(ps_ai_timeout(ps_config($s))===240,'Host can provision the AI wait limit');putenv('POCKET_AI_TIMEOUT');
+    $error=ps_provider_error('concentrate',422,ps_json(['detail'=>[['loc'=>['body','model'],'msg'=>'Unknown model, secret-fixture-key','input'=>'secret-fixture-key']]]));
+    check(str_contains($error,'model selection')&&!str_contains($error,'secret-fixture-key'),'Validation errors identify the field without exposing submitted input or raw messages');
+    $error=ps_provider_error('concentrate',422,ps_json(['error'=>['code'=>'zdr_route_unavailable','message'=>'No ZDR provider available']]));
+    check(str_contains($error,'ZDR restriction')&&!str_contains($error,'disable'),'ZDR errors preserve the key policy and explain route selection');
+    $error=ps_provider_error('openrouter',400,ps_json(['error'=>['param'=>'max_tokens','message'=>'invalid limit']]));
+    check(str_contains($error,'max_tokens'),'Parameter errors name recognized request fields');
+    check(!str_contains(ps_provider_error('concentrate',422,'<html>private server response</html>'),'private server response'),'Non-JSON provider errors are not echoed');
+    $choices=ps_model_choices(['data'=>[['id'=>'model-one','display_name'=>'Model One'],['slug'=>'model-two','id'=>'internal-id','name'=>'Model Two'],['id'=>'~vendor/latest','name'=>'Latest'],['id'=>'model:batch'],['id'=>'image-only','architecture'=>['output_modalities'=>['image']]],['id'=>'bad id']]]);
+    check(array_column($choices,'id')===['model-one','model-two','~vendor/latest'],'Model picker accepts provider IDs and excludes batch-only, image-only, and malformed entries');
+    check(!str_contains(ps_json($choices),'internal-id'),'Model picker prefers the public slug over internal identifiers');
+    rejects(fn()=>ps_model_choices(['data'=>[]]),'An empty model catalog has an actionable failure');
+    $s['password_hash']=password_hash('example-passphrase-only',PASSWORD_DEFAULT); $s['setup_code']='';
+    $s['config']['api_key']='private-fixture-key';
+    $_SESSION=['auth'=>$s['auth_version'],'seen'=>time(),'csrf'=>'test-csrf'];
+    $public=ps_public($s);
+    check(!str_contains(ps_json($public),'private-fixture-key')&&!isset($public['password_hash']),'Authenticated API never returns keys or password hashes');
+    $_SESSION=['csrf'=>'test-csrf'];
+    $public=ps_public($s);
+    check(!isset($public['files'])&&!isset($public['config']),'Unauthenticated API does not expose draft content');
+    file_put_contents(POCKET_ROOT.'/index.html','Existing customer website');
+    rejects(function()use(&$s){ps_publish($s);},'Refuse to overwrite an unrelated website');
+    check(file_get_contents(POCKET_ROOT.'/index.html')==='Existing customer website','Unowned files remain unchanged');
+    file_put_contents(POCKET_ROOT.'/index.html', $placeholder);
+    ps_publish($s);
+    check(file_get_contents(POCKET_ROOT.'/index.html')===$s['files']['index.html'],'Publish writes actual website files');
+    check($s['journal']===null&&count($s['published'])===2,'Publish commits the manifest and clears its recovery journal');
+    check((fileperms(POCKET_ROOT.'/index.html')&0777)===0644,'Published files are readable by the web server');
+    file_put_contents(POCKET_ROOT.'/index.html','External edit');
+    rejects(function()use(&$s){ps_publish($s);},'Detect external edits to previously published files');
+    ps_atomic(POCKET_ROOT.'/index.html',$s['files']['index.html'],0644);
+    ps_apply($s,['message'=>'Removed about','files'=>[],'delete'=>['about.html']],'Remove about');
+    ps_publish($s);
+    check(!file_exists(POCKET_ROOT.'/about.html'),'Publish removes a retired managed file');
+    $original=file_get_contents(POCKET_ROOT.'/index.html');
+    $s['journal']=['index.html'=>['before'=>base64_encode($original),'after_hash'=>hash('sha256','Partly published')],'new.html'=>['before'=>null,'after_hash'=>hash('sha256','New file')]];
+    ps_save($s); ps_atomic(POCKET_ROOT.'/index.html','Partly published',0644); ps_atomic(POCKET_ROOT.'/new.html','New file',0644);
+    $s=ps_load();ps_recover($s);
+    check(file_get_contents(POCKET_ROOT.'/index.html')===$original&&!file_exists(POCKET_ROOT.'/new.html'),'A persisted interrupted publish can be rolled back');
+    $s['journal']=['index.html'=>['before'=>base64_encode($original),'after_hash'=>hash('sha256','Expected update')]];
+    ps_atomic(POCKET_ROOT.'/index.html','A third-party edit',0644);
+    rejects(function()use(&$s){ps_recover($s);},'Recovery preserves unexpected third-party changes');
+    $s['journal']=null; ps_atomic(POCKET_ROOT.'/index.html',$original,0644);
+    mkdir(POCKET_ROOT.'/outside',0700);symlink(POCKET_ROOT.'/outside',POCKET_ROOT.'/linked');
+    rejects(fn()=>ps_disk_path('linked/escape.html',true),'Reject a symlinked parent folder');
+    symlink(POCKET_ROOT.'/index.html',POCKET_ROOT.'/alias.html');
+    rejects(fn()=>ps_disk_path('alias.html'),'Reject symlinked output files');
+    putenv('POCKET_API_KEY=host-provisioned-fixture');putenv('POCKET_PROVIDER=concentrate');putenv('POCKET_MODEL=host-model');
+    check(ps_config($s)['api_key']==='host-provisioned-fixture'&&ps_config($s)['provider']==='concentrate','Host provisioning overrides editable settings');
+    putenv('POCKET_API_KEY');putenv('POCKET_PROVIDER');putenv('POCKET_MODEL');
+    ps_save($s);
+    check(!str_contains(explode("\n",file_get_contents(ps_state_path()))[0],'Setup code:'),'Ownership code is removed after setup');
+    echo "\n$passed checks passed. Provider responses were fixtures; no live inference was billed.\n";
+} finally { clean(POCKET_ROOT); }
