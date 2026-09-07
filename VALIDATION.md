@@ -2,6 +2,12 @@
 
 Checked on September 7, 2026, with PHP and Chromium via Playwright.
 
+- Public 0.2.1 discovery, signature and download passed the updater transport.
+  An isolated copy of the actual public 0.2.0 editor discovered and installed
+  0.2.1 from GitHub while preserving synthetic draft, credentials and website.
+  The initial CI check raced GitHub feed propagation after publication; verification
+  now runs as a separate retryable job with bounded propagation retries.
+
 - PHP syntax, 125 core, 79 installation, 47 update-notice, 41 installer,
   91 HTTP, 68 browser and 20 rich-text checks passed, plus embedded JavaScript checks.
 - Rich-text checks cover selected emphasis, headings, links, unsafe URLs,
