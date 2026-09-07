@@ -5,9 +5,9 @@
 An open-source AI website editor for shared hosting. Upload one PHP file,
 describe your site, and publish real HTML, CSS and JavaScript files you own.
 
-**Alpha 0.2.1** · **PHP 8.2+** · **AGPL-3.0-only**
+**Alpha 0.2.2** · **PHP 8.2+** · **AGPL-3.0-only**
 
-[Download sitefren.php](https://github.com/raldjr/sitefren/releases/download/v0.2.1/sitefren.php)
+[Download sitefren.php](https://github.com/raldjr/sitefren/releases/download/v0.2.2/sitefren.php)
 · [Get started](docs/INSTALLATION.md)
 · [Changes](CHANGELOG.md)
 · [Report a bug](https://github.com/raldjr/sitefren/issues/new/choose)
@@ -25,7 +25,7 @@ separately by the provider you connect.
 ## What you can do
 
 - Describe a website and refine it through conversation.
-- Edit text directly in the preview without an AI request.
+- Edit text with a floating formatting bar; replace, resize and describe images directly in the preview.
 - Select an element and ask AI to change it.
 - Edit source files, upload images and preview desktop/mobile layouts.
 - Drag one or more images onto the prompt area, or click **+ Add image**.
@@ -39,7 +39,7 @@ stylesheets, scripts and images, and continues to work independently of Sitefren
 
 ## Start in a few steps
 
-1. [Download sitefren.php](https://github.com/raldjr/sitefren/releases/download/v0.2.1/sitefren.php). If your browser displays source, save the raw file as `sitefren.php`.
+1. [Download sitefren.php](https://github.com/raldjr/sitefren/releases/download/v0.2.2/sitefren.php). If your browser displays source, save the raw file as `sitefren.php`.
 2. Upload **only that file** into an empty folder on compatible hosting.
 3. Visit `https://your-domain.example/sitefren.php` (include your folder if needed).
 4. Open the automatically created `builder-state.php` in your hosting file manager.

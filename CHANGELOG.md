@@ -1,5 +1,14 @@
 # Changes
 
+## 0.2.2 — September 7, 2026
+
+- Rename Edit text to Edit and replace the separate formatting section with a
+  floating toolbar beside the selected text or image.
+- Add image replacement from uploads, alt text, width, height, fit and removal.
+  Preserve page styling and relative image paths, including image-only pages.
+- Save text and image changes together to the draft, with cancellation and
+  unsaved-change protection. Published sites remain independent of the editor.
+
 ## 0.2.1 — September 7, 2026
 
 - Add selection-based bold, italic, underline, heading and link controls to direct
