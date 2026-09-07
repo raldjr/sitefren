@@ -10,10 +10,16 @@ function curl_errno($ch){return $ch->errno;}
 function curl_close($ch){}
 function curl_exec($ch){
     $options=$ch->options;
+    if (str_starts_with($ch->url, 'https://github.com/raldjr/sitefren/releases/download/') && getenv('POCKET_UPDATE_FIXTURE')) {
+        $assets = json_decode(file_get_contents(getenv('POCKET_UPDATE_FIXTURE')), true);
+        $body = $assets[$ch->url] ?? null;
+        if (!is_string($body)) { $ch->status = 404; return true; }
+        return ($options[CURLOPT_WRITEFUNCTION])($ch, $body) === strlen($body);
+    }
     if($ch->url==='https://api.github.com/repos/raldjr/sitefren/releases?per_page=10'){
         if(!empty($options[CURLOPT_POST])||isset($options[CURLOPT_POSTFIELDS]))throw new RuntimeException('Update check must not send project data');
         foreach($options[CURLOPT_HTTPHEADER] as $header)if(str_starts_with($header,'Authorization:'))throw new RuntimeException('Update check must not send credentials');
-        $body=json_encode([['tag_name'=>'v0.1.11','draft'=>false,'prerelease'=>true]]);
+        $body=json_encode([['tag_name'=>'v0.2.1','draft'=>false,'prerelease'=>true]]);
         ($options[CURLOPT_WRITEFUNCTION])($ch,$body);
         return true;
     }

@@ -1,6 +1,6 @@
 <?php
 /**
- * Sitefren 0.1.10 — an uploadable AI editor for small static websites.
+ * Sitefren 0.2.0 — an uploadable AI editor for small static websites.
  * SPDX-License-Identifier: AGPL-3.0-only
  * Copyright (c) 2026 Raul Aldrete Jr. and contributors
  * Built by Raul Aldrete Jr. for Sheepdog Host.
@@ -692,7 +692,8 @@
  */
 declare(strict_types=1);
 
-const PS_VERSION = '0.1.10';
+const PS_VERSION = '0.2.0';
+const PS_UPDATE_PUBLIC_KEY = 'TthJkmF58DxCfaw/0N6iRLhORlImuMT3brLGxKJV7jM=';
 // Optional embedded sponsor artwork (data:image/...;base64,...) preserves one-file delivery.
 const PS_SPONSOR_IMAGE = '';
 const PS_OUTPUT_TOKENS = 16000;
@@ -907,6 +908,9 @@ function ps_locked(callable $callback): mixed {
             fwrite($handle, '<?php http_response_code(404); exit;');
         }
         $state = ps_load();
+        if (version_compare($state['editor_version'] ?? PS_VERSION, PS_VERSION, '>')) {
+            ps_fail('The editor was updated. Reload this page; if this persists, ask your host to clear PHP OPcache.', 409);
+        }
         ps_ensure_homepage($state);
         return $callback($state);
     } finally {
@@ -1060,6 +1064,143 @@ function ps_fetch_release_version(): ?string {
         curl_close($handle);
     }
 }
+function ps_update_problem(): ?string {
+    if (getenv('POCKET_UPDATE_CHECKS') === '0') return 'Updates are disabled by your host.';
+    foreach (['curl_init', 'sodium_crypto_sign_verify_detached', 'token_get_all'] as $function) {
+        if (!function_exists($function)) return 'One-click updates need PHP cURL, Sodium and Tokenizer. Use the manual download.';
+    }
+    if (is_link(__FILE__) || !is_writable(__FILE__) || !is_writable(dirname(__FILE__))) {
+        return 'The editor or its folder is not writable. Update through your hosting file manager.';
+    }
+    if (function_exists('opcache_get_status') && opcache_get_status(false) !== false &&
+        !ini_get('opcache.validate_timestamps') && !function_exists('opcache_invalidate')) {
+        return 'Your host must clear its PHP cache. Use the manual download.';
+    }
+    return null;
+}
+function ps_update_download(string $url, int $limit): string {
+    for ($redirects = 0; $redirects < 4; $redirects++) {
+        $parts = parse_url($url);
+        if (!$parts || ($parts['scheme'] ?? '') !== 'https' ||
+            !in_array($parts['host'] ?? '', ['github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com'], true) ||
+            isset($parts['user']) || isset($parts['pass']) || ($parts['port'] ?? 443) !== 443) {
+            throw new RuntimeException('The release download redirected to an unexpected destination.');
+        }
+        $body = '';
+        $handle = curl_init($url);
+        if ($handle === false) throw new RuntimeException('Could not start the release download.');
+        try {
+            curl_setopt_array($handle, [
+                CURLOPT_USERAGENT => 'Sitefren/' . PS_VERSION,
+                CURLOPT_CONNECTTIMEOUT_MS => 2000, CURLOPT_TIMEOUT_MS => 5000,
+                CURLOPT_NOSIGNAL => true, CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_WRITEFUNCTION => static function ($handle, string $chunk) use (&$body, $limit): int {
+                    if (strlen($body) + strlen($chunk) > $limit) return 0;
+                    $body .= $chunk;
+                    return strlen($chunk);
+                },
+            ]);
+            $ok = curl_exec($handle);
+            $status = curl_getinfo($handle, CURLINFO_HTTP_CODE);
+            if ($ok === false) throw new RuntimeException('The release download failed or exceeded its size limit. Try again or update manually.');
+            if ($status === 200) return $body;
+            if (!in_array($status, [301, 302, 303, 307, 308], true)) {
+                throw new RuntimeException('This release has no downloadable signed update. Use the manual download.');
+            }
+            $url = curl_getinfo($handle, CURLINFO_REDIRECT_URL);
+            if (!is_string($url)) throw new RuntimeException('Invalid release redirect.');
+        } finally {
+            curl_close($handle);
+        }
+    }
+    throw new RuntimeException('Too many release redirects.');
+}
+function ps_update_manifest(string $version): array {
+    if (!preg_match('/^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.?\d*)?$/D', $version)) {
+        throw new RuntimeException('Invalid release version.');
+    }
+    $base = 'https://github.com/raldjr/sitefren/releases/download/v' . $version . '/';
+    $raw = ps_update_download($base . 'update.json', 4096);
+    $signature = base64_decode(trim(ps_update_download($base . 'update.sig', 256)), true);
+    if ($signature === false || strlen($signature) !== 64 ||
+        !sodium_crypto_sign_verify_detached($signature, $raw, base64_decode(PS_UPDATE_PUBLIC_KEY, true))) {
+        throw new RuntimeException('The release signature could not be verified. Your editor has not been replaced.');
+    }
+    $manifest = json_decode($raw, true, 16, JSON_THROW_ON_ERROR);
+    if (!is_array($manifest) || ($manifest['version'] ?? null) !== $version ||
+        !is_string($manifest['sha256'] ?? null) || !preg_match('/^[a-f0-9]{64}$/D', $manifest['sha256']) ||
+        !is_int($manifest['size'] ?? null) || $manifest['size'] < 1 || $manifest['size'] > 2097152 ||
+        ($manifest['schema'] ?? null) !== 1 || !is_string($manifest['php_min'] ?? null) ||
+        !is_string($manifest['php_max'] ?? null) || version_compare(PHP_VERSION, $manifest['php_min'], '<') ||
+        version_compare(PHP_VERSION, $manifest['php_max'], '>=')) {
+        throw new RuntimeException('This signed release is not compatible with this installation.');
+    }
+    return $manifest;
+}
+function ps_install_update(array $input): array {
+    $version = $input['version'] ?? '';
+    $reservation = bin2hex(random_bytes(16));
+    ps_locked(static function (array $state) use ($input, $version, $reservation): void {
+        if (!ps_authorized($state)) ps_fail('Please sign in again.', 401);
+        ps_check_revision($state, $input);
+        if ($problem = ps_update_problem()) ps_fail($problem, 409);
+        if (!is_string($version) || !preg_match('/^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.?\d*)?$/D', $version) ||
+            !version_compare($version, PS_VERSION, '>')) ps_fail('Choose a newer release.', 409);
+        $state['update_pending'] = ['id' => $reservation, 'expires' => time() + 180];
+        ps_save($state);
+    });
+    session_write_close();
+    try {
+        // Authenticate both the installed bytes and the replacement: preserve local customizations.
+        $current = ps_update_manifest(PS_VERSION);
+        $next = ps_update_manifest($version);
+        $code = ps_update_download('https://github.com/raldjr/sitefren/releases/download/v' . $version . '/sitefren.php', 2097152);
+        if (strlen($code) !== $next['size'] || !hash_equals($next['sha256'], hash('sha256', $code)) ||
+            !str_starts_with($code, '<?php') || !str_contains($code, "const PS_VERSION = '" . $version . "';")) {
+            throw new RuntimeException('The downloaded editor does not match the signed release.');
+        }
+        token_get_all($code, TOKEN_PARSE);
+        return ps_locked(static function (array $state) use ($input, $reservation, $current, $code, $version): array {
+            if (!ps_authorized($state) || ($state['update_pending']['id'] ?? '') !== $reservation ||
+                ($state['update_pending']['expires'] ?? 0) <= time() || $state['revision'] !== $input['revision']) {
+                ps_fail('The update reservation expired or the project changed. Try again.', 409);
+            }
+            if ($problem = ps_update_problem()) ps_fail($problem, 409);
+            $oldCode = file_get_contents(__FILE__);
+            if ($oldCode === false || !hash_equals($current['sha256'], hash('sha256', $oldCode))) {
+                ps_fail('This editor has local changes or was already replaced. Back it up and update manually.', 409);
+            }
+            $backup = ps_state_path() . '.update-' . $reservation;
+            unset($state['update_pending']);
+            $oldState = $state;
+            // Backups are inert PHP files, readable only by the hosting account owner.
+            ps_atomic($backup . '.editor.php', '<?php http_response_code(404); exit; ?>' . "\n" . base64_encode($oldCode));
+            ps_atomic($backup . '.state.php', '<?php http_response_code(404); exit; ?>' . "\n" . ps_json($oldState));
+            $state['editor_version'] = $version;
+            $state['update_backup'] = basename($backup);
+            $state['update_check'] = ['status' => 'unchecked'];
+            ps_save($state);
+            try {
+                ps_atomic(__FILE__, $code, fileperms(__FILE__) & 0777);
+            } catch (Throwable $error) {
+                ps_save($oldState);
+                throw $error;
+            }
+            if (function_exists('opcache_invalidate')) @opcache_invalidate(__FILE__, true);
+            return ['updated' => true, 'version' => $version];
+        });
+    } catch (Throwable $error) {
+        ps_locked(static function (array $state) use ($reservation): void {
+            if (($state['update_pending']['id'] ?? '') === $reservation) {
+                unset($state['update_pending']);
+                ps_save($state);
+            }
+        });
+        throw $error;
+    }
+}
+
 function ps_check_updates(bool $force): array {
     $check = ps_locked(static function (array $state) use ($force): array {
         if (!ps_authorized($state)) {
@@ -1098,6 +1239,7 @@ function ps_check_updates(bool $force): array {
     return array_intersect_key($check, array_flip(['status', 'version', 'checked_at'])) + [
         'available' => ($check['status'] ?? '') === 'checked' &&
             version_compare($check['version'], PS_VERSION, '>'),
+        'install_problem' => ps_update_problem(),
         'url' => 'https://github.com/raldjr/sitefren/releases',
     ];
 }
@@ -2312,6 +2454,9 @@ function ps_recover(array &$state): void {
     ps_save($state);
 }
 function ps_check_revision(array $state, array $input): void {
+    if (($state['update_pending']['expires'] ?? 0) > time()) {
+        ps_fail('An editor update is running. Wait for it to finish.', 409);
+    }
     if (!isset($input['revision']) || $input['revision'] !== $state['revision']) {
         ps_fail('This project changed in another tab. Refresh before trying again.', 409);
     }
@@ -2480,6 +2625,9 @@ if (isset($_GET['action'])) {
             if (!is_array($input)) {
                 ps_fail('Expected a JSON object.');
             }
+        }
+        if ($action === 'update_now') {
+            ps_reply(ps_install_update($input));
         }
         if ($action === 'check_updates') {
             ps_reply(ps_check_updates(($input['force'] ?? false) === true));
@@ -2851,13 +2999,13 @@ try {
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiByb2xlPSJpbWciIGFyaWEtbGFiZWxsZWRieT0idGl0bGUiPgogIDx0aXRsZSBpZD0idGl0bGUiPlNpdGVmcmVuIHNtaWxpbmcgYnJvd3NlcjwvdGl0bGU+CiAgPHN0eWxlPgogICAgLmJyYW5kIHsgZmlsbDogI0NDM0QwMDsgfQogICAgLndpbmRvdyB7IGZpbGw6ICNGRkZGRkY7IH0KICA8L3N0eWxlPgogIDxyZWN0IGNsYXNzPSJicmFuZCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHJ4PSI4OCIvPgogIDxyZWN0IGNsYXNzPSJ3aW5kb3ciIHg9Ijc0IiB5PSI4NiIgd2lkdGg9IjM2NCIgaGVpZ2h0PSIzMjgiIHJ4PSI0MCIvPgogIDxnIGNsYXNzPSJicmFuZCI+CiAgICA8Y2lyY2xlIGN4PSIxMzIiIGN5PSIxMzkiIHI9IjIyIi8+CiAgICA8Y2lyY2xlIGN4PSIxOTEiIGN5PSIxMzkiIHI9IjIyIi8+CiAgICA8cmVjdCB4PSI3NCIgeT0iMTc5IiB3aWR0aD0iMzY0IiBoZWlnaHQ9IjIwIi8+CiAgICA8Y2lyY2xlIGN4PSIxODYiIGN5PSIyNzAiIHI9IjI2Ii8+CiAgICA8Y2lyY2xlIGN4PSIzMjYiIGN5PSIyNzAiIHI9IjI2Ii8+CiAgICA8cGF0aCBkPSJNMTg2IDMxNyBDMjIyIDM1NSAyOTAgMzU1IDMyNiAzMTcgQTE2IDE2IDAgMCAxIDM0OSAzMzkgQzMwMSAzOTEgMjExIDM5MSAxNjMgMzM5IEExNiAxNiAwIDAgMSAxODYgMzE3WiIvPgogIDwvZz4KPC9zdmc+Cg==" />
     <style nonce="<?= htmlspecialchars($nonce, ENT_QUOTES) ?>">
       :root {
-        --ink: #252c2a;
-        --muted: #777e78;
-        --line: #e2e5de;
-        --paper: #f6f7f3;
-        --green: #326448;
-        --mint: #e7efdc;
-        --accent: #d5e7b6;
+        --ink: #18181b;
+        --muted: #52525b;
+        --line: #e4e4e7;
+        --paper: #f4f4f5;
+        --brand: #c2410c;
+        --tint: #fff7ed;
+        --accent: #ffedd5;
         --white: #fff;
         --red: #9c3737;
       }
@@ -2906,12 +3054,12 @@ try {
         background: var(--paper);
       }
       .primary {
-        background: var(--green);
-        border-color: var(--green);
+        background: var(--brand);
+        border-color: var(--brand);
         color: white;
       }
       .primary:hover:not(:disabled) {
-        background: #234c35;
+        background: #9a3412;
       }
       .quiet {
         background: transparent;
@@ -2923,16 +3071,16 @@ try {
         text-transform: uppercase;
         letter-spacing: 1.2px;
         padding: 4px 8px;
-        border: 1px solid #dce3d4;
+        border: 1px solid #e4e4e7;
         border-radius: 5px;
-        color: #62744c;
+        color: #3f3f46;
       }
       .mark {
         width: 32px;
         height: 32px;
         display: grid;
         place-items: center;
-        background: var(--green);
+        background: var(--brand);
         border-radius: 9px;
         color: var(--accent);
         font-weight: 700;
@@ -2962,7 +3110,7 @@ try {
       }
       .help-link,
       .update-link {
-        color: #304922;
+        color: #9a3412;
         font-size: 12px;
         text-underline-offset: 3px;
       }
@@ -3001,13 +3149,13 @@ try {
         gap: 6px;
         align-items: center;
         font-size: 11px;
-        color: var(--green);
+        color: var(--brand);
         margin-top: 13px;
       }
       .dot {
         width: 6px;
         height: 6px;
-        background: #79a55b;
+        background: #c2410c;
         border-radius: 50%;
       }
       .conversation {
@@ -3019,12 +3167,12 @@ try {
       .welcome-icon {
         width: 39px;
         height: 39px;
-        background: var(--mint);
+        background: var(--tint);
         border-radius: 12px;
         display: grid;
         place-items: center;
         font-size: 23px;
-        color: var(--green);
+        color: var(--brand);
         margin-bottom: 15px;
       }
       .welcome h2 {
@@ -3050,7 +3198,7 @@ try {
       }
       .suggestions span {
         float: right;
-        color: #89977b;
+        color: #71717a;
       }
       .message {
         margin: 0 0 20px;
@@ -3064,7 +3212,7 @@ try {
         font-size: 10px;
         text-transform: uppercase;
         letter-spacing: 1.2px;
-        color: #81916f;
+        color: #71717a;
         font-weight: 700;
       }
       .message.user {
@@ -3073,26 +3221,26 @@ try {
         border-radius: 12px;
       }
       .message.user .who {
-        color: #8b908b;
+        color: #71717a;
       }
       .composer-wrap {
         padding: 12px 17px 17px;
         border-top: 1px solid var(--line);
       }
       .composer {
-        border: 1px solid #d5dccd;
-        background: #fcfdf9;
+        border: 1px solid #e4e4e7;
+        background: #ffffff;
         border-radius: 13px;
         padding: 11px;
       }
       .composer:focus-within {
-        border-color: #90a77d;
-        box-shadow: 0 0 0 3px #dfe9d344;
+        border-color: #c2410c;
+        box-shadow: 0 0 0 3px #ffedd566;
       }
       .composer.drag-over {
-        border-color: #66875b;
-        background: #edf3e5;
-        box-shadow: 0 0 0 3px #dfe9d3;
+        border-color: #c2410c;
+        background: #fff7ed;
+        box-shadow: 0 0 0 3px #ffedd5;
       }
       .composer textarea {
         width: 100%;
@@ -3116,7 +3264,7 @@ try {
       .composer-note {
         font-size: 10px;
         text-align: center;
-        color: #8e948c;
+        color: #71717a;
         margin: 10px 0 0;
       }
       .workbench {
@@ -3132,7 +3280,7 @@ try {
         padding: 10px 16px;
         gap: 16px;
         border-bottom: 1px solid var(--line);
-        background: #fafbf8;
+        background: #fafafa;
         min-height: 90px;
         flex-shrink: 0;
       }
@@ -3152,7 +3300,7 @@ try {
       }
       .tabs button.active {
         background: white;
-        box-shadow: 0 1px 4px #17271312;
+        box-shadow: 0 1px 4px #18181b12;
         color: var(--ink);
       }
       .view-controls {
@@ -3167,7 +3315,7 @@ try {
       }
       .view-controls button.active {
         background: white;
-        border-color: #bdcbb1;
+        border-color: #d4d4d8;
       }
       .view-controls select {
         max-width: 190px;
@@ -3180,7 +3328,7 @@ try {
         align-items: flex-start;
         flex: 1;
         padding: 26px;
-        background: radial-gradient(#c4cdc040 0.7px, transparent 0.7px);
+        background: radial-gradient(#d4d4d840 0.7px, transparent 0.7px);
         background-size: 13px 13px;
       }
       .preview-shell {
@@ -3189,11 +3337,11 @@ try {
         min-height: 440px;
         display: flex;
         flex-direction: column;
-        border: 1px solid #d9dfd2;
+        border: 1px solid #e4e4e7;
         border-radius: 12px;
         overflow: hidden;
         background: white;
-        box-shadow: 0 8px 40px #33452b0a;
+        box-shadow: 0 8px 40px #18181b0a;
         transition: max-width 0.2s;
       }
       .preview-shell.mobile {
@@ -3201,7 +3349,7 @@ try {
       }
       .browser-bar {
         background: #fff;
-        border-bottom: 1px solid #e8ebe2;
+        border-bottom: 1px solid #e4e4e7;
         display: flex;
         align-items: center;
         padding: 12px 15px;
@@ -3211,13 +3359,13 @@ try {
       .browser-bar i {
         width: 7px;
         height: 7px;
-        background: #d9ded4;
+        background: #d4d4d8;
         border-radius: 50%;
       }
       .address {
         flex: 1;
         text-align: center;
-        color: #9ba293;
+        color: #71717a;
         font-size: 10px;
         letter-spacing: 0.3px;
         padding-right: 30px;
@@ -3238,17 +3386,17 @@ try {
         justify-content: center;
         text-align: center;
         padding: 35px;
-        background: #fcfdf9;
+        background: #ffffff;
       }
       .empty-preview .illustration {
         width: 130px;
         height: 100px;
-        border: 1px solid #cad9ba;
+        border: 1px solid #d4d4d8;
         border-radius: 9px;
         position: relative;
-        background: #eff4e6;
+        background: #f4f4f5;
         margin-bottom: 28px;
-        box-shadow: 12px 12px 0 #e4ebda;
+        box-shadow: 12px 12px 0 #e4e4e7;
       }
       .illustration:before {
         content: '';
@@ -3257,7 +3405,7 @@ try {
         right: 14px;
         top: 17px;
         height: 9px;
-        background: #b9cda1;
+        background: #a1a1aa;
         border-radius: 3px;
       }
       .illustration:after {
@@ -3267,13 +3415,12 @@ try {
         top: 39px;
         width: 55px;
         height: 43px;
-        background: #d4e1c2;
+        background: #e4e4e7;
         border-radius: 4px;
       }
       .empty-preview h2 {
-        font:
-          29px Georgia,
-          serif;
+        font-size: 29px;
+        font-weight: 700;
         letter-spacing: -0.5px;
         margin: 0 0 10px;
       }
@@ -3293,7 +3440,7 @@ try {
         gap: 6px 16px;
         justify-content: space-between;
         padding: 10px 23px;
-        color: #89907f;
+        color: #71717a;
         font-size: 10px;
         border-top: 1px solid var(--line);
       }
@@ -3303,9 +3450,9 @@ try {
         min-width: 0;
         justify-self: center;
         padding: 8px 12px;
-        border: 1px solid #e0e7d7;
+        border: 1px solid #e4e4e7;
         border-radius: 8px;
-        background: #f1f5e9;
+        background: #fafafa;
         color: var(--ink);
       }
       .sponsor-link {
@@ -3332,7 +3479,7 @@ try {
       }
       .sponsor-label {
         display: block;
-        color: #56624e;
+        color: #52525b;
         font-size: 9px;
         letter-spacing: 0.4px;
         text-transform: uppercase;
@@ -3342,7 +3489,7 @@ try {
         margin: 2px 0;
       }
       .sponsor-cta {
-        color: #304922;
+        color: #9a3412;
         font-size: 11px;
         text-underline-offset: 3px;
       }
@@ -3395,8 +3542,8 @@ try {
         overflow-wrap: anywhere;
       }
       .file-list button.active {
-        background: var(--mint);
-        border-color: #bacdab;
+        background: var(--tint);
+        border-color: #fed7aa;
       }
       .code-area {
         display: flex;
@@ -3474,7 +3621,7 @@ try {
         background: white;
         border: 1px solid var(--line);
         border-radius: 17px;
-        box-shadow: 0 12px 60px #23362408;
+        box-shadow: 0 12px 60px #18181b08;
       }
       .gate h1 {
         font-size: 26px;
@@ -3499,7 +3646,7 @@ try {
       }
       input,
       select {
-        border: 1px solid #d8ded2;
+        border: 1px solid #e4e4e7;
         border-radius: 8px;
         background: white;
         padding: 10px 12px;
@@ -3526,7 +3673,7 @@ try {
         border-radius: 5px;
         padding: 4px 7px;
         font-size: 10px;
-        color: #6d7d5e;
+        color: #52525b;
       }
       dialog {
         border: 1px solid var(--line);
@@ -3534,10 +3681,10 @@ try {
         max-width: 470px;
         width: calc(100% - 32px);
         padding: 27px;
-        box-shadow: 0 25px 100px #1f352433;
+        box-shadow: 0 25px 100px #18181b33;
       }
       dialog::backdrop {
-        background: #26392b55;
+        background: #18181b55;
         backdrop-filter: blur(3px);
       }
       dialog h2 {
@@ -3574,10 +3721,10 @@ try {
         width: max-content;
         z-index: 9;
         padding: 13px 18px;
-        border: 1px solid #d1ddc7;
+        border: 1px solid #e4e4e7;
         border-radius: 10px;
         background: #fff;
-        box-shadow: 0 10px 35px #25342420;
+        box-shadow: 0 10px 35px #18181b20;
         font-size: 12px;
       }
       .toast.error {
@@ -3597,14 +3744,14 @@ try {
       .working {
         padding: 0 22px 13px;
         font-size: 12px;
-        color: var(--green);
+        color: var(--brand);
       }
       .spinner {
         display: inline-block;
         width: 12px;
         height: 12px;
-        border: 2px solid #d0ddc6;
-        border-top-color: var(--green);
+        border: 2px solid #fed7aa;
+        border-top-color: var(--brand);
         border-radius: 50%;
         animation: spin 1s linear infinite;
         margin-right: 7px;
@@ -3730,8 +3877,8 @@ try {
         align-items: center;
         flex-wrap: wrap;
         padding: 12px;
-        background: #e8eedf;
-        border: 1px solid #cbd6c1;
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
         border-radius: 12px;
         margin-bottom: 12px;
       }
@@ -3754,7 +3901,7 @@ try {
         font:
           12px/1.6 ui-monospace,
           monospace;
-        background: #f5f6f1;
+        background: #fafafa;
         padding: 14px;
         border-radius: 12px;
         max-height: 45vh;
@@ -3806,12 +3953,12 @@ try {
         max-width: 360px;
       }
       .preview-actions button[aria-pressed='true'] {
-        background: var(--mint);
-        border-color: #91ac7b;
+        background: var(--tint);
+        border-color: #c2410c;
       }
       .selection-chip {
-        background: #edf3e5;
-        border: 1px solid #c9d9b8;
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
         border-radius: 8px;
         padding: 9px 10px;
         margin-bottom: 9px;
@@ -3833,7 +3980,7 @@ try {
       }
       .message-target {
         display: block;
-        color: #63744e;
+        color: #9a3412;
         font-size: 11px;
         margin-bottom: 5px;
       }
@@ -3853,7 +4000,7 @@ try {
   <body>
     <header class="topbar">
       <div class="brand">
-        <span class="mark" aria-hidden="true">s.</span>Sitefren
+        <img class="mark" alt="" width="32" height="32" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiByb2xlPSJpbWciIGFyaWEtbGFiZWxsZWRieT0idGl0bGUiPgogIDx0aXRsZSBpZD0idGl0bGUiPlNpdGVmcmVuIHNtaWxpbmcgYnJvd3NlcjwvdGl0bGU+CiAgPHN0eWxlPgogICAgLmJyYW5kIHsgZmlsbDogI0NDM0QwMDsgfQogICAgLndpbmRvdyB7IGZpbGw6ICNGRkZGRkY7IH0KICA8L3N0eWxlPgogIDxyZWN0IGNsYXNzPSJicmFuZCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHJ4PSI4OCIvPgogIDxyZWN0IGNsYXNzPSJ3aW5kb3ciIHg9Ijc0IiB5PSI4NiIgd2lkdGg9IjM2NCIgaGVpZ2h0PSIzMjgiIHJ4PSI0MCIvPgogIDxnIGNsYXNzPSJicmFuZCI+CiAgICA8Y2lyY2xlIGN4PSIxMzIiIGN5PSIxMzkiIHI9IjIyIi8+CiAgICA8Y2lyY2xlIGN4PSIxOTEiIGN5PSIxMzkiIHI9IjIyIi8+CiAgICA8cmVjdCB4PSI3NCIgeT0iMTc5IiB3aWR0aD0iMzY0IiBoZWlnaHQ9IjIwIi8+CiAgICA8Y2lyY2xlIGN4PSIxODYiIGN5PSIyNzAiIHI9IjI2Ii8+CiAgICA8Y2lyY2xlIGN4PSIzMjYiIGN5PSIyNzAiIHI9IjI2Ii8+CiAgICA8cGF0aCBkPSJNMTg2IDMxNyBDMjIyIDM1NSAyOTAgMzU1IDMyNiAzMTcgQTE2IDE2IDAgMCAxIDM0OSAzMzkgQzMwMSAzOTEgMjExIDM5MSAxNjMgMzM5IEExNiAxNiAwIDAgMSAxODYgMzE3WiIvPgogIDwvZz4KPC9zdmc+Cg==" />Sitefren
         <span class="tag" id="versionBadge">Alpha <?= PS_VERSION ?></span>
       </div>
       <div class="top-right" id="topActions" hidden>
@@ -4101,9 +4248,10 @@ try {
         >
         <p class="hint" id="updateStatus">Sitefren <?= PS_VERSION ?> · Updates are checked while you use the editor.</p>
         <button type="button" id="checkUpdatesBtn">Check for updates</button>
+        <button type="button" id="updateNowBtn" class="primary" hidden>Update now</button>
         <p><a id="releaseDownloads" class="help-link" href="https://github.com/raldjr/sitefren/releases"
           target="_blank" rel="noopener noreferrer">View releases and downloads ↗</a></p>
-        <p class="hint">To upgrade, back up your private state and published files, then upload only the new sitefren.php.</p>
+        <p class="hint">Update now verifies the official release and backs up your editor and private state. Your website files stay in place. Manual uploads are also supported.</p>
         <div class="dialog-actions">
           <button type="button" id="cancelSettings">Cancel</button
           ><button class="primary" type="submit">Save connection</button>
@@ -4148,30 +4296,54 @@ try {
         selectionMode = null,
         selectedElement = null;
       let updateCheckStarted = false;
+      let offeredVersion = null;
       async function checkUpdates(force = false) {
         byId('checkUpdatesBtn').disabled = true;
         if (force) byId('updateStatus').textContent = 'Checking published releases…';
         try {
           const result = await api('check_updates', { force });
           if (!state?.authenticated) return;
+          offeredVersion = result.available ? result.version : null;
+          byId('updateNowBtn').hidden = !result.available || !!result.install_problem;
           byId('updateAvailable').hidden = !result.available;
-          byId('updateAvailable').textContent = `Update available: ${result.version} ↗`;
+          byId('updateAvailable').textContent = `Update available: ${result.version}`;
           const messages = {
             checked: result.available
-              ? `Sitefren ${result.version} is available. Open the update link to review and download it.`
+              ? `Sitefren ${result.version} is available. You can install it from Settings.`
               : `Sitefren ${state.version} · No newer published version found.`,
             no_release: 'No published release was found. You can check again later.',
             unavailable: 'Could not reach the release service. Try again later.',
             disabled: 'Update checks are disabled by your hosting configuration.',
             unchecked: 'Another update check may be running. Try again shortly.',
           };
-          byId('updateStatus').textContent = messages[result.status] || messages.unavailable;
+          byId('updateStatus').textContent = (messages[result.status] || messages.unavailable) + (result.available && result.install_problem ? ' ' + result.install_problem : '');
         } catch (error) {
           if (state?.authenticated) byId('updateStatus').textContent = 'Could not check for updates. Try again later.';
         } finally {
           byId('checkUpdatesBtn').disabled = false;
         }
       }
+      byId('updateNowBtn').addEventListener('click', async () => {
+        if (busy || !offeredVersion) return;
+        if (dirtyCode || visual) return notice('Save your file or finish visual editing before updating.', true);
+        const version = offeredVersion;
+        byId('settingsDialog').close();
+        if (!await confirmAction(`Update to Sitefren ${version}?`,
+          'The editor will download and verify the release, back up the editor and private state, then reload. Your website files and settings are preserved. Keep this tab open until it finishes.', 'Update now')) return;
+        setBusy(true);
+        byId('working').lastElementChild.textContent = 'Verifying and installing the editor update…';
+        try {
+          await api('update_now', { version });
+          location.reload();
+        } catch (error) {
+          notice(error.message, true);
+          setBusy(false);
+        }
+      });
+      byId('updateAvailable').addEventListener('click', (event) => {
+        event.preventDefault();
+        byId('settingsBtn').click();
+      });
       byId('checkUpdatesBtn').addEventListener('click', () => checkUpdates(true));
       function notice(message, error = false) {
         clearTimeout(toastTimer);
@@ -4609,7 +4781,7 @@ try {
         });
         const style = document.createElement('style');
         style.textContent =
-          '[data-pocket-select]{cursor:crosshair!important}[data-pocket-hover]{outline:2px dashed #326448!important;outline-offset:-2px}[data-pocket-selected]{outline:3px solid #326448!important;outline-offset:-3px}';
+          '[data-pocket-select]{cursor:crosshair!important}[data-pocket-hover]{outline:2px dashed #c2410c!important;outline-offset:-2px}[data-pocket-selected]{outline:3px solid #c2410c!important;outline-offset:-3px}';
         document.head.append(style);
       }
       function selectionBridge(token) {
@@ -4851,7 +5023,7 @@ try {
         });
         const style = doc.createElement('style');
         style.textContent =
-          '[data-pocket-text]{cursor:text;white-space:pre-wrap;min-width:1ch;outline:1px dashed #66875b;outline-offset:3px}[data-pocket-text]:focus{outline:2px solid #326247}';
+          '[data-pocket-text]{cursor:text;white-space:pre-wrap;min-width:1ch;outline:1px dashed #c2410c;outline-offset:3px}[data-pocket-text]:focus{outline:2px solid #c2410c}';
         doc.head.append(style);
       }
       function visualBridge(token) {

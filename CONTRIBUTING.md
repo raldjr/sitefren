@@ -33,7 +33,9 @@ Run `php -d disable_functions=curl_init,curl_setopt_array,curl_exec,curl_getinfo
 for isolated installation reporting checks. These replace cURL and never send
 analytics. CLI and built-in-server development runs skip automatic reporting.
 Run the same command with `tests/updates.php` for release-check cache, authentication,
-version ordering, and transport-failure coverage. HTTP/browser runners disable
+version ordering, and transport-failure coverage. Run the same command with
+`tests/update-install.php` for signed replacement, tamper rejection and recovery
+coverage. HTTP/browser runners disable
 release traffic unless the isolated fixture transport is enabled.
 With cURL enabled, run `POCKET_TEST_TRANSPORT=1 python3 tests/integration.py`
 and `POCKET_TEST_TRANSPORT=1 node tests/browser.cjs` to exercise generation,
@@ -58,7 +60,8 @@ images, or private runtime files. Reproduction cases must use synthetic data.
 4. Inspect the release archive for secrets and customer data.
 5. Update `PS_VERSION`, the source header, README, installation guide, changelog,
    and validation record. The frontend badge reads `PS_VERSION` automatically.
-6. Regenerate `SHA256SUMS` for all tracked release files except the manifest itself.
+6. Sign the release with `php scripts/sign-release.php sign ~/.config/sitefren/release-signing.key`
+   (private key stays outside the repo), then regenerate `SHA256SUMS` for all tracked release files except the manifest itself.
 7. Publish source, the standalone file, release notes, and checksums together.
 
 Pushing a matching `vX.Y.Z` tag triggers `.github/workflows/release.yml` to verify

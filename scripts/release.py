@@ -26,6 +26,8 @@ def prepare(tag, destination):
     if expected_download not in (ROOT / "README.md").read_text():
         raise ValueError("README must link to this release's standalone download")
 
+    subprocess.run(["php", "scripts/sign-release.php", "verify"], cwd=ROOT, check=True)
+
     tracked = set(subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().strip("\0").split("\0"))
     for name in tracked:
         if re.search(r"(^|/)(builder-state[^/]*|\.env(?:\..*)?|id_rsa|id_ed25519)$", name):
@@ -52,7 +54,7 @@ def prepare(tag, destination):
         f"Download [sitefren.php]({expected_download}) below and upload only that file. "
         "For upgrades, back up private state and published files first, then replace the editor. "
         "Keep `builder-state.php` and your website files. No setup reset is needed.\n\n"
-        "The editor remains alpha. In-place updating is not implemented. Existing versions "
+        "The editor remains alpha. Version 0.2.0 adds signed, owner-confirmed Update now. Older builds need one manual upload. Existing versions "
         "with release checking can discover this release during use, or through Settings → Check for updates.\n\n"
         "The attached checksums cover the standalone download and the source tree. "
         "Source archives are provided by GitHub. See VALIDATION.md in the source for test evidence "

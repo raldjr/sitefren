@@ -1,3 +1,32 @@
+# Alpha 0.2.0 release validation
+
+Checked on September 7, 2026, with PHP 8.5.4 and Chromium via Playwright.
+
+- PHP syntax, 125 core, 79 installation, 47 update-notice, 41 installer,
+  91 HTTP and 68 browser checks passed, plus embedded JavaScript/image-drop
+  checks. All provider and installer traffic used isolated synthetic fixtures.
+- Installer tests cover signed manifests and bytes, compatibility, local edits,
+  authentication, CSRF, HTTP methods, concurrent work, expired reservations,
+  bounded downloads and redirect destinations. A fresh PHP process boots the
+  replacement using preserved state. Private backups reproduce the previous
+  editor/state and return an empty 404 over HTTP.
+- The browser exercises cancel and confirm, actual PHP replacement and reload,
+  continued sign-in, and unchanged draft/provider credentials. No customer
+  installation was modified by these tests.
+- Desktop, laptop, text/image advertisement and mobile layouts were checked.
+  The editor now uses sitefren.com's supplied logo, orange and neutral colors;
+  generated websites keep their own styles. No horizontal mobile overflow.
+- Release signing uses an owner-only private key outside the repository. Only
+  the public key, manifest and detached signature ship. Release preparation
+  verifies the signature, source hash, versioned links and all tracked checksums.
+- PHP cURL, Sodium, Tokenizer and writable editor/folder permissions are needed
+  for in-place updates. Customized editors use manual uploads. PHP process limits,
+  unusual OPcache settings and interrupted replacement may need manual recovery;
+  no automatic post-install health rollback is claimed. Schema 1 only.
+- AI adapters were unchanged. Live provider calls and representative production
+  shared-host installs were not repeated; fixture tests are not certification
+  of every hosting configuration.
+
 # Alpha 0.1.10 release validation
 
 Checked on September 7, 2026, with PHP 8.5.4 and Chromium via Playwright.

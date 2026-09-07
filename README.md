@@ -5,9 +5,9 @@
 An open-source AI website editor for shared hosting. Upload one PHP file,
 describe your site, and publish real HTML, CSS and JavaScript files you own.
 
-**Alpha 0.1.10** · **PHP 8.2+** · **AGPL-3.0-only**
+**Alpha 0.2.0** · **PHP 8.2+** · **AGPL-3.0-only**
 
-[Download sitefren.php](https://github.com/raldjr/sitefren/releases/download/v0.1.10/sitefren.php)
+[Download sitefren.php](https://github.com/raldjr/sitefren/releases/download/v0.2.0/sitefren.php)
 · [Get started](docs/INSTALLATION.md)
 · [Changes](CHANGELOG.md)
 · [Report a bug](https://github.com/raldjr/sitefren/issues/new/choose)
@@ -39,7 +39,7 @@ stylesheets, scripts and images, and continues to work independently of Sitefren
 
 ## Start in a few steps
 
-1. [Download sitefren.php](https://github.com/raldjr/sitefren/releases/download/v0.1.10/sitefren.php). If your browser displays source, save the raw file as `sitefren.php`.
+1. [Download sitefren.php](https://github.com/raldjr/sitefren/releases/download/v0.2.0/sitefren.php). If your browser displays source, save the raw file as `sitefren.php`.
 2. Upload **only that file** into an empty folder on compatible hosting.
 3. Visit `https://your-domain.example/sitefren.php` (include your folder if needed).
 4. Open the automatically created `builder-state.php` in your hosting file manager.
@@ -80,8 +80,10 @@ Settings also has **Check for updates**. Failed checks retry on a later visit af
 an hour. Manual checks are limited to once a minute. These checks send the app
 version as a user agent, but no installation ID, customer URL, project data, or
 provider key. GitHub receives the hosting server's IP through the connection.
-Set `POCKET_UPDATE_CHECKS=0` to disable checks. Updates are downloaded and uploaded
-manually; this version does not replace itself. See [updates](docs/UPDATES.md).
+Set `POCKET_UPDATE_CHECKS=0` to disable checks. From 0.2.0, Settings offers **Update now** for newer signed releases on compatible
+hosts. It verifies the download, backs up the editor and state, and replaces only
+the editor. Older builds need one manual upload to gain this feature. Customized
+editors keep the manual upgrade path. See [updates](docs/UPDATES.md).
 
 ## Hosting and setup help
 

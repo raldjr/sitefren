@@ -1,5 +1,14 @@
 # Changes
 
+## 0.2.0 — September 7, 2026
+
+- Add owner-confirmed Update now with Ed25519 release verification, compatibility
+  and local modification checks, protected editor/state backups, and atomic replacement.
+  Existing versions need one manual upload to gain the installer.
+- Sign release manifests locally; publish public signatures with verified releases.
+- Match sitefren.com with its smiling-browser logo, orange controls, neutral grays,
+  and sans-serif headings. Retain the compact toolbar advertisement and independent help.
+
 ## 0.1.10 — September 7, 2026
 
 - Publish tagged releases through GitHub Actions after version, checksum, and

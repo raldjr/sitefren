@@ -6,7 +6,7 @@
  * edits a deployed website or makes a live inference request.
  */
 const fs=require('node:fs');const os=require('node:os');const path=require('node:path');
-const net=require('node:net');const {spawn}=require('node:child_process');
+const crypto=require('node:crypto');const net=require('node:net');const {spawn}=require('node:child_process');
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 let passed=0;
 function check(value,label){if(!value)throw Error(label);passed++;process.stdout.write('PASS: '+label+'\n')}
@@ -17,6 +17,22 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  const port=await new Promise(resolve=>{const server=net.createServer();server.listen(0,'127.0.0.1',()=>{const port=server.address().port;server.close(()=>resolve(port))})});
  const env={...process.env};for(const key of Object.keys(env))if(key.startsWith('POCKET_'))delete env[key];
  if(process.env.POCKET_TEST_TRANSPORT!=='1')env.POCKET_UPDATE_CHECKS='0';
+ if(process.env.POCKET_TEST_TRANSPORT==='1'){
+  const keys=crypto.generateKeyPairSync('ed25519');
+  const publicKey=keys.publicKey.export({type:'spki',format:'der'}).subarray(-32).toString('base64');
+  const editorPath=path.join(root,'sitefren.php');
+  const source=fs.readFileSync(editorPath,'utf8').replace(/const PS_UPDATE_PUBLIC_KEY = '[^']+';/,`const PS_UPDATE_PUBLIC_KEY = '${publicKey}';`);
+  fs.writeFileSync(editorPath,source);
+  const assets={};
+  for(const version of ['0.2.0','0.2.1']){
+   const code=source.replace("const PS_VERSION = '0.2.0';",`const PS_VERSION = '${version}';`);
+   const manifest=JSON.stringify({version,sha256:crypto.createHash('sha256').update(code).digest('hex'),size:Buffer.byteLength(code),php_min:'8.2.0',php_max:'9.0.0',schema:1});
+   const base=`https://github.com/raldjr/sitefren/releases/download/v${version}/`;
+   assets[base+'sitefren.php']=code;assets[base+'update.json']=manifest;assets[base+'update.sig']=crypto.sign(null,Buffer.from(manifest),keys.privateKey).toString('base64');
+  }
+  env.POCKET_UPDATE_FIXTURE=path.join(root,'fixture-assets.json');
+  fs.writeFileSync(env.POCKET_UPDATE_FIXTURE,JSON.stringify(assets));
+ }
  const phpArgs=JSON.parse(process.env.PHP_ARGS_JSON||'[]');
  if(process.env.POCKET_TEST_TRANSPORT==='1')phpArgs.push('-d','disable_functions=curl_init,curl_setopt_array,curl_exec,curl_getinfo,curl_errno,curl_close','-d','auto_prepend_file='+path.join(__dirname,'curl-fixture.php'));
  const php=spawn(process.env.PHP_BIN||'php',[...phpArgs,'-S',`127.0.0.1:${port}`,'-t',root],{env,stdio:'ignore'});
@@ -29,7 +45,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   const url=`http://127.0.0.1:${port}/sitefren.php`;
   await page.goto(url);await page.locator('#authForm').waitFor({state:'visible'});
   check(await page.locator('#setupHelpLink').isVisible(),'Setup offers help before sign-in');
-  check((await page.locator('#versionBadge').innerText())==='ALPHA 0.1.10'||(await page.locator('#versionBadge').innerText())==='Alpha 0.1.10','The shipped version is identified as Alpha 0.1.10');
+  check((await page.locator('#versionBadge').innerText())==='ALPHA 0.2.0'||(await page.locator('#versionBadge').innerText())==='Alpha 0.2.0','The shipped version is identified as Alpha 0.2.0');
   const code=fs.readFileSync(path.join(root,'builder-state.php'),'utf8').match(/Setup code: ([A-Za-z0-9_-]+)/)[1];
   await page.locator('#setupCode').fill(code);await page.locator('#password').fill('browser-testing-passphrase');await page.locator('#authButton').click();
   await page.locator('#settingsDialog').waitFor({state:'visible'});await page.locator('#cancelSettings').click();
@@ -42,7 +58,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   check((await page.locator('#editorHelpLink').getAttribute('href'))==='mailto:hello@raul.ws?subject=Sitefren%20help','Help opens an email without customer data');
   if(process.env.POCKET_TEST_TRANSPORT==='1'){
    await page.locator('#updateAvailable').waitFor({state:'visible'});
-   check((await page.locator('#updateAvailable').innerText()).includes('0.1.11'),'A newer published release shows an update notice');
+   check((await page.locator('#updateAvailable').innerText()).includes('0.2.1'),'A newer published release shows an update notice');
   }
   await page.locator('#demoBtn').click();
   const preview=page.frameLocator('#preview');await preview.locator('h1').waitFor({state:'visible'});
@@ -188,6 +204,23 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   check(await page.locator('#sponsorSpot').isVisible(),'The hosting advertisement remains visible on mobile');
   check(await page.locator('#versionBadge').isVisible()&&await page.locator('#editorHelpLink').isVisible(),'Mobile retains the version badge and independent help link');
   if(process.env.SCREENSHOT_PATH)await page.screenshot({path:process.env.SCREENSHOT_PATH+'.mobile.png',fullPage:true});
+  if(process.env.POCKET_TEST_TRANSPORT==='1'){
+   await page.locator('#updateAvailable').waitFor({state:'visible'});
+   await page.locator('#updateAvailable').click();
+   await page.locator('#updateNowBtn').waitFor({state:'visible'});
+   check(await page.locator('#settingsDialog').isVisible(),'The footer opens Settings with Update now');
+   await page.locator('#updateNowBtn').click();await page.locator('#confirmDialog').waitFor({state:'visible'});
+   await page.locator('#cancelConfirm').click();
+   check(fs.readFileSync(path.join(root,'sitefren.php'),'utf8').includes("const PS_VERSION = '0.2.0';"),'Cancel leaves the installed version untouched');
+   const before=JSON.parse(fs.readFileSync(path.join(root,'builder-state.php'),'utf8').split('?>\n')[1]);
+   await page.locator('#settingsBtn').click();await page.locator('#updateNowBtn').click();await page.locator('#acceptConfirm').click();
+   await page.waitForFunction(()=>document.querySelector('#versionBadge').textContent.includes('0.2.1'));
+   await page.locator('#app').waitFor({state:'visible'});
+   const after=JSON.parse(fs.readFileSync(path.join(root,'builder-state.php'),'utf8').split('?>\n')[1]);
+   check(JSON.stringify(before.files)===JSON.stringify(after.files)&&JSON.stringify(before.config)===JSON.stringify(after.config),'Update now reloads into the signed release with draft and credentials preserved');
+   const backupResponse=await page.request.get(`http://127.0.0.1:${port}/${after.update_backup}.state.php`);
+   check(backupResponse.status()===404&&(await backupResponse.body()).length===0,'Update backup is inaccessible over HTTP');
+  }
   await page.locator('#logoutBtn').click();await page.locator('#authForm').waitFor({state:'visible'});
   check(true,'Browser sign-out returns to the password screen');
   check(await page.locator('#setupHelpLink').isVisible(),'Sign-in keeps the help link available');

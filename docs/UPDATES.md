@@ -1,91 +1,126 @@
 # Editor updates
 
-## Available now
+## Installing an update
 
-After owner sign-in, the browser asks the PHP editor to check the fixed public
-GitHub releases feed for `raldjr/sitefren`. The request is authenticated and
-CSRF-protected. PHP fetches at most ten releases, outside the state lock, with a
-three-second timeout, verified HTTPS, no redirects, and a bounded response size.
-No project content, installation ID, customer hostname or provider key is sent.
-The request user agent includes the Sitefren version; GitHub sees the server IP.
+From Alpha 0.2.0, signed releases can be installed through **Settings → Check for
+updates → Update now**. The owner confirms, the editor verifies and installs the
+release, and the page reloads. Drafts, credentials, installation identity and
+published files are preserved. Save file edits and finish visual editing first.
 
-The latest supported version tag among those releases is compared with
-`PS_VERSION`. Supported tags are `0.1.9`, `v0.1.9`, and alpha/beta/rc variants such
-as `v0.2.0-beta.1`. Published prereleases are included because Sitefren is alpha.
-Drafts and unrelated tag names are ignored. A Git tag without a GitHub Release
-does not appear in this feed.
+Builds before 0.2.0 need one manual upload to gain the installer: back up the
+editor and private state, upload only the new `sitefren.php`, and sign in normally.
+Keep `builder-state.php` and your website files. This also remains the fallback
+for customized editors, incompatible hosts or unavailable release assets.
 
-Successful checks are cached in private state for 24 hours. Failed checks retry
-after an hour when the editor is used again. Settings offers a manual check with
-a one-minute minimum interval. These checks do not change the draft revision.
-There is no background service or push connection: notices appear during use.
-Set `POCKET_UPDATE_CHECKS=0` in the hosting environment to disable checks.
+One-click updates require PHP cURL, Sodium and Tokenizer, and writable editor and
+parent directory permissions. No shell access, Composer, database, worker or
+second customer upload is needed. There is no unattended installation.
 
-The footer links to the official release page when a newer release exists. Settings
-also keeps a **View releases and downloads** link available. The
-owner backs up private state and published files, then replaces only `sitefren.php`
-through their hosting file manager. An unavailable or empty feed is reported
-explicitly; neither is presented as proof that the installation is up to date.
+## Discovery and privacy
 
-## Publishing a version
+After owner sign-in, PHP checks the fixed public GitHub releases feed for
+`raldjr/sitefren`. The request is authenticated and CSRF-protected. It fetches at
+most ten releases outside the state lock, with a three-second timeout, verified
+HTTPS, no redirects and a bounded response size. Supported version tags and
+published prereleases are included; drafts and unrelated tags are ignored.
+A tag without a published GitHub Release is not discoverable.
 
-Follow CONTRIBUTING.md's release checks, update the shipped version, and publish
-a GitHub Release with a supported matching version tag, release notes, the
-standalone `sitefren.php`, and checksums. Publish prereleases explicitly while the
-app remains alpha. The ten most recent release entries must include the currently
-recommended version.
+Successful checks are cached for 24 hours. Failed checks retry after an hour.
+Settings offers a manual check with a one-minute minimum interval. These checks
+do not change the draft revision. Notices appear during editor use; closed
+browsers and idle hosts receive no push message. `POCKET_UPDATE_CHECKS=0` disables
+both checks and in-place updates.
 
-The `Publish release` GitHub Actions workflow runs when a `v*` version tag is pushed.
-It verifies that the tag matches the app, docs, changelog and complete checksum
-manifest, then runs core, installation, update, HTTP and JavaScript checks. It
-creates a draft release, uploads the standalone PHP file, source checksums, and a
-separate download checksum, then publishes the alpha prerelease. Source archives
-are supplied by GitHub. The workflow uses GitHub's scoped token; no personal key
-is distributed or required by the installed editor.
+Checks and downloads send the app version as a user agent. No project content,
+installation ID, customer hostname or provider key is sent. GitHub and its asset
+host see the hosting server's IP address. Manual release downloads stay available
+from Settings even when automated checking is disabled.
 
-Publisher sequence after local browser validation and compatibility review:
+## Verification and replacement
 
-```sh
-git push origin main
-git tag -a v0.1.10 -m "Sitefren Alpha 0.1.10"
-git push origin v0.1.10
-```
+The editor embeds only the publisher's Ed25519 public key. The private signing
+key is kept outside the repository and is never distributed or sent to GitHub.
+A signature authenticates the exact manifest bytes covering version, SHA-256,
+file size, PHP compatibility and state schema.
 
-Use the new version for each shipment. Watch the workflow finish and verify the
-published file against its checksum before announcing it. If publishing fails
-after creating a draft, inspect that draft and workflow logs before retrying;
-the workflow does not overwrite an existing release.
+On the authenticated, CSRF-protected POST action, the editor reserves the update
+in private state for three minutes. Concurrent edits and generation requests are
+rejected while that reservation is active. Downloads run outside the state lock.
+Only fixed versioned GitHub release assets and HTTPS redirects to GitHub's
+`release-assets.githubusercontent.com` or `objects.githubusercontent.com` hosts
+are accepted. Each transfer is limited to five seconds and four destinations;
+metadata and editor bodies have explicit size limits. Failed attempts clear their
+reservation; an interrupted process's reservation expires.
 
-The README's versioned asset link always downloads the file from that release,
-not an unreleased edit on main. GitHub's `/releases/latest` shortcuts omit
-prereleases, so use `/releases` as the general alpha release destination.
+Both the current and next release manifests must verify. The current editor's
+on-disk hash must match its signed release; custom changes, including embedded
+sponsor artwork, require a manual upgrade so they are not silently overwritten.
+The target must be newer, compatible with PHP and schema 1, match its signed
+size/hash/version, and parse as PHP without executing it.
 
-Editors with release checking discover a new published version on their next
-eligible check during use, usually within a day of publication. **Check for
-updates** bypasses the daily cache after the one-minute cooldown. Older builds
-without this checker need to be upgraded manually once. This is polling during
-use, not a push notification to closed browsers or idle hosting accounts.
+Under the state lock, the installer rechecks the reservation and revision,
+creates protected editor/state backups, records the new editor version and
+replaces the editor with a same-directory atomic rename. Replacement failure
+restores the previous state. Published files are untouched. OPcache is invalidated
+when available; an old worker encountering newer state is rejected with a reload
+message. Hosts that retain stale PHP bytecode may need their cache cleared.
 
-## Proposed in-place installation
+## Backup recovery
 
-A one-file PHP app can replace its own file. That installer is not implemented
-in this version. Before adding it, establish a signed release workflow:
+Backups are retained beside the private state file, with owner-only permissions:
 
-1. Keep a release-signing private key outside the repo and distributed app. Embed
-   only its public key in the editor. PHP Sodium can verify Ed25519 signatures;
-   hosts without the verifier retain the manual update path.
-2. Publish a signed manifest covering the release version, supported PHP versions,
-   state compatibility, file size, checksum, and a fixed-origin download location.
-3. On an authenticated owner action with CSRF protection, download to a temporary
-   file, verify the signature and bytes, and check host compatibility. Reject
-   downgrades, unexpected local modifications and concurrent update attempts.
-4. Preserve a protected backup of the old editor and private state. Use a dedicated
-   update lock, ensure no generation/publish is running, and replace the editor
-   through a same-directory rename. Invalidate OPcache where supported.
-5. Verify the new editor can start, with a tested manual recovery path if it cannot.
-   A failed new PHP file cannot be relied on to run its own rollback code. Make
-   state migrations recoverable before advertising automatic rollback.
+- `builder-state.php.update-<random-id>.editor.php`: an inert PHP guard, then a
+  newline and base64 of the old editor.
+- `builder-state.php.update-<random-id>.state.php`: the old private state with its
+  normal PHP guard and JSON body. A custom state path changes this filename prefix.
 
-These are requirements for a future installer, not guarantees of the current
-notification feature. Customers would still upload one PHP file; release tooling
-and signatures would be maintained by the publisher.
+HTTP requests to these files return an empty 404 when PHP is configured normally.
+Treat them as private: state backups contain credentials and drafts. Keep an
+independent hosting backup too. Old backup pairs can be removed through the file
+manager after the new editor has been verified; the installer does not delete them.
+
+For manual recovery, take the editor backup's text **after the first newline**,
+base64-decode it locally, and upload the decoded file over `sitefren.php`. Restore
+its matching `.state.php` backup over the configured private state file. Do not
+upload the still-encoded editor backup as the editor. Clear the host's PHP cache
+if needed. This paired restore also recovers an interruption between saving update
+metadata and replacing the editor. Website files do not need replacing.
+
+The installer is not an automatic health-check rollback service. A new editor
+that cannot start cannot run its own recovery code. Hosting process limits,
+disk exhaustion and unusual OPcache configurations remain reasons to use the
+file-manager recovery path. Schema changes require a separate migration design;
+the current installer accepts only schema 1 releases.
+
+## Publishing a signed version
+
+The publisher's key is stored at
+`~/.config/sitefren/release-signing.key`, with owner-only permissions. Back it up
+securely; losing it prevents signing updates trusted by existing installations.
+Do not generate a replacement key for an ordinary release. The development tool's
+`create-key PATH` command is for initial setup only. Neither key material nor
+runtime state belongs in the repository or release assets.
+
+After editing and testing the new version:
+
+1. Update the PHP version/header, README download links, installation guide,
+   changelog and validation record as described in CONTRIBUTING.md.
+2. Run `php scripts/sign-release.php sign ~/.config/sitefren/release-signing.key`.
+   This writes public `release/update.json` and `release/update.sig`. Any later
+   change to `sitefren.php` requires signing again.
+3. Stage the release files and regenerate `SHA256SUMS` for all tracked files except
+   itself. Run `python3 scripts/release.py v0.2.0 /tmp/sitefren-release`, using the
+   version being shipped. It verifies signatures, hashes, docs and release notes.
+4. Commit and push, then create and push the matching annotated `vX.Y.Z` tag.
+5. Watch the Publish release workflow finish; verify the public PHP download and
+   signatures before announcing it.
+
+The tag workflow verifies the signed manifest and complete source checksums,
+runs PHP, core, analytics, update, installer, HTTP and JavaScript checks, then
+publishes an alpha prerelease containing `sitefren.php`, `update.json`,
+`update.sig`, `SHA256SUMS` and `sitefren.php.sha256`. GitHub supplies source
+archives. Local browser and representative-host validation remain separate.
+The workflow uses GitHub's scoped token; no signing secret is held by CI.
+
+Use the versioned asset URL for downloads. GitHub's `/releases/latest` shortcuts
+omit prereleases, so `/releases` remains the general alpha release destination.

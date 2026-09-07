@@ -7,7 +7,7 @@ Built by **Raul Aldrete Jr.** for [Sheepdog Host](https://sheepdoghost.com).
 Upload one PHP file. Describe your website. Preview it. Publish real HTML, CSS,
 and JavaScript on the hosting account you already own.
 
-Sitefren is an **Alpha 0.1.10** application for small static websites, licensed under AGPL-3.0-only.
+Sitefren is an **Alpha 0.2.0** application for small static websites, licensed under AGPL-3.0-only.
 
 **One file to upload is a project requirement.** The customer uploads
 `sitefren.php`; the editor creates its own private state and published site files.
@@ -56,7 +56,13 @@ first. Open `sitefren.php` and sign in with your existing password; drafts and
 settings are reused. Once that works, remove the old `builder.php` so visitors
 cannot keep using an outdated editor. Do not rename or delete private state.
 
-For later upgrades, replace only `sitefren.php`. The internal POCKET_* hosting
+From 0.2.0 onward, use **Settings → Check for updates → Update now** when a newer
+signed release is available. Confirm to back up the editor and private state and
+reload into the new version. This needs writable editor/folder permissions and
+PHP cURL, Sodium and Tokenizer. Modified editor files need a manual upgrade.
+See [updates and backup recovery](UPDATES.md).
+
+For manual upgrades, replace only `sitefren.php`. The internal POCKET_* hosting
 settings remain supported. Renaming the upload changes its session cookie name,
 so an existing user may need to sign in again but does not repeat setup.
 
@@ -375,7 +381,7 @@ combinations and Apache/LiteSpeed/PHP-FPM deployments. Review the release archiv
 Ideas for later releases: hosting-panel installation, per-customer key issuance,
 usage limits, account-aware model validation, a separate editor origin, existing-site
 import with explicit ownership, longer resumable jobs, source diffs, vetted
-contact-form components, export, and update distribution.
+contact-form components and export.
 
 ## License and attribution
 

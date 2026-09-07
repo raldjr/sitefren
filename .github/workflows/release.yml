@@ -30,6 +30,7 @@ jobs:
           php tests/core.php
           php -d disable_functions=curl_init,curl_setopt_array,curl_exec,curl_getinfo,curl_close tests/installations.php
           php -d disable_functions=curl_init,curl_setopt_array,curl_exec,curl_getinfo,curl_close tests/updates.php
+          php -d disable_functions=curl_init,curl_setopt_array,curl_exec,curl_getinfo,curl_close tests/update-install.php
           node tests/image-drop.cjs
           POCKET_TEST_TRANSPORT=1 python3 tests/integration.py
       - name: Publish the verified single-file download
@@ -38,7 +39,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            sitefren.php SHA256SUMS "$RUNNER_TEMP/sitefren-release/sitefren.php.sha256" \
+            sitefren.php release/update.json release/update.sig SHA256SUMS "$RUNNER_TEMP/sitefren-release/sitefren.php.sha256" \
             --verify-tag --draft --prerelease \
             --title "Sitefren Alpha ${GITHUB_REF_NAME#v}" \
             --notes-file "$RUNNER_TEMP/sitefren-release/notes.md"
