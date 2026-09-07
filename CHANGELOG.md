@@ -1,5 +1,14 @@
 # Changes
 
+## 0.2.4 — September 7, 2026
+
+- Give Chat and Editor their own full workspace on desktop and mobile, with a
+  centered composer, quieter header, compact controls and a slimmer hosting ad.
+- Keep unsent prompts and source edits when switching views. Open new projects
+  in Chat, offer a sample shortcut, and return completed AI changes to Editor.
+- Add Continue in Chat for selected elements and move request details and
+  sign-out into the More menu. Preserve floating text/image editing and PWA support.
+
 ## 0.2.3 — September 7, 2026
 
 - Add separate Website and Chat views on phones, preserving unsent prompts.

@@ -19,7 +19,7 @@ function curl_exec($ch){
     if($ch->url==='https://api.github.com/repos/raldjr/sitefren/releases?per_page=10'){
         if(!empty($options[CURLOPT_POST])||isset($options[CURLOPT_POSTFIELDS]))throw new RuntimeException('Update check must not send project data');
         foreach($options[CURLOPT_HTTPHEADER] as $header)if(str_starts_with($header,'Authorization:'))throw new RuntimeException('Update check must not send credentials');
-        $body=json_encode([['tag_name'=>'v0.2.4','draft'=>false,'prerelease'=>true]]);
+        $body=json_encode([['tag_name'=>'v0.2.5','draft'=>false,'prerelease'=>true]]);
         ($options[CURLOPT_WRITEFUNCTION])($ch,$body);
         return true;
     }
