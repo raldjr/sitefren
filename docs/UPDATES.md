@@ -113,10 +113,15 @@ After editing and testing the new version:
    version being shipped. It verifies signatures, hashes, docs and release notes.
 4. Commit and push, then create and push the matching annotated `vX.Y.Z` tag.
 5. Watch the Publish release workflow finish; verify the public PHP download and
-   signatures before announcing it.
+   signatures with `php scripts/verify-published-release.php` before announcing it.
+
+A request to ship an update is complete only after the version commit and tag
+are pushed, the release workflow succeeds, and the public verifier passes.
+A pushed main branch alone does not deliver an editor update. Report the version,
+release link and verification result when handing off a release.
 
 The tag workflow verifies the signed manifest and complete source checksums,
-runs PHP, core, analytics, update, installer, HTTP and JavaScript checks, then
+runs PHP, core, analytics, update, installer, HTTP, JavaScript and browser checks, then
 publishes an alpha prerelease containing `sitefren.php`, `update.json`,
 `update.sig`, `SHA256SUMS` and `sitefren.php.sha256`. GitHub supplies source
 archives. Local browser and representative-host validation remain separate.

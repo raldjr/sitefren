@@ -1,3 +1,23 @@
+# Alpha 0.2.1 release validation
+
+Checked on September 7, 2026, with PHP and Chromium via Playwright.
+
+- PHP syntax, 125 core, 79 installation, 47 update-notice, 41 installer,
+  91 HTTP, 68 browser and 20 rich-text checks passed, plus embedded JavaScript checks.
+- Rich-text checks cover selected emphasis, headings, links, unsafe URLs,
+  styled spans, navigation/button replacement, saved source, cancellation,
+  paused website scripts, plain-text paste and mobile overflow. Desktop and
+  mobile screenshots were inspected. Fixed stripped button elements and
+  replacement text being saved outside its block during this validation.
+- Browser installer tests use signed synthetic releases and verify preserved
+  drafts and credentials after replacement and reload. Provider tests use
+  fixtures; live AI requests and production shared-host upgrades were not run.
+- Release CI now runs browser and rich-text tests before publishing, then checks
+  the public release feed, signature and downloaded bytes using the updater's
+  own transport. The publisher must verify these before reporting completion.
+- Squire 2.4.8 is embedded with its MIT license; customers still upload one PHP
+  file. Existing update compatibility and manual recovery limits still apply.
+
 # Alpha 0.2.0 release validation
 
 Checked on September 7, 2026, with PHP 8.5.4 and Chromium via Playwright.

@@ -15,7 +15,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -33,6 +33,13 @@ jobs:
           php -d disable_functions=curl_init,curl_setopt_array,curl_exec,curl_getinfo,curl_close tests/update-install.php
           node tests/image-drop.cjs
           POCKET_TEST_TRANSPORT=1 python3 tests/integration.py
+      - name: Check browser editing and signed upgrades
+        run: |
+          npm install --prefix "$RUNNER_TEMP/browser-tests" --no-save playwright@1.62.1
+          "$RUNNER_TEMP/browser-tests/node_modules/.bin/playwright" install --with-deps chromium
+          export PLAYWRIGHT_MODULE="$RUNNER_TEMP/browser-tests/node_modules/playwright"
+          POCKET_TEST_TRANSPORT=1 node tests/browser.cjs
+          node tests/rich-text.cjs
       - name: Publish the verified single-file download
         env:
           GH_TOKEN: ${{ github.token }}
@@ -44,3 +51,5 @@ jobs:
             --title "Sitefren Alpha ${GITHUB_REF_NAME#v}" \
             --notes-file "$RUNNER_TEMP/sitefren-release/notes.md"
           gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease
+      - name: Verify public update discovery and signed download
+        run: php scripts/verify-published-release.php

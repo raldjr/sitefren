@@ -1,5 +1,15 @@
 # Changes
 
+## 0.2.1 — September 7, 2026
+
+- Add selection-based bold, italic, underline, heading and link controls to direct
+  text editing, with the MIT-licensed Squire editor embedded in the single PHP file.
+- Preserve page styles, block attributes and original scripts when saving text to
+  the draft; reject unsafe links and keep preview editing helpers out of saved HTML.
+- Gate releases on browser editing and signed-upgrade tests, then verify public
+  update discovery, signatures and download bytes after publishing.
+- Include the validated SVG upload and publishing fix in the signed update download.
+
 ## 0.2.0 — September 7, 2026
 
 - Add owner-confirmed Update now with Ed25519 release verification, compatibility
