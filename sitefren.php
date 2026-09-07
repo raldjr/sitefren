@@ -1,6 +1,6 @@
 <?php
 /**
- * Sitefren 0.1.8 — an uploadable AI editor for small static websites.
+ * Sitefren 0.1.9 — an uploadable AI editor for small static websites.
  * SPDX-License-Identifier: AGPL-3.0-only
  * Copyright (c) 2026 Raul Aldrete Jr. and contributors
  * Built by Raul Aldrete Jr. for Sheepdog Host.
@@ -692,7 +692,7 @@
  */
 declare(strict_types=1);
 
-const PS_VERSION = '0.1.8';
+const PS_VERSION = '0.1.9';
 const PS_OUTPUT_TOKENS = 16000;
 const PS_TEXT_LIMIT = 250000;
 const PS_ASSET_LIMIT = 8000000;
@@ -2958,6 +2958,7 @@ try {
         gap: 10px;
         align-items: center;
       }
+      .help-link,
       .update-link {
         color: #304922;
         font-size: 12px;
@@ -3291,6 +3292,7 @@ try {
         border-top: 1px solid var(--line);
       }
       .sponsor-spot {
+        flex-shrink: 0;
         display: flex;
         flex-wrap: wrap;
         align-items: center;
@@ -3581,8 +3583,15 @@ try {
         .canvas {
           padding: 16px;
         }
-        .tag {
-          display: none;
+        .topbar {
+          height: auto;
+          min-height: 69px;
+          flex-wrap: wrap;
+          gap: 8px;
+          padding-block: 10px;
+        }
+        .top-right {
+          flex-wrap: wrap;
         }
       }
       @media (max-width: 720px) {
@@ -3800,12 +3809,13 @@ try {
     <header class="topbar">
       <div class="brand">
         <span class="mark" aria-hidden="true">s.</span>Sitefren
-        <span class="tag">Alpha <?= PS_VERSION ?></span>
+        <span class="tag" id="versionBadge">Alpha <?= PS_VERSION ?></span>
       </div>
       <div class="top-right" id="topActions" hidden>
         <span class="subtle" id="saveStatus">Draft saved</span
         ><button id="diagnosticsBtn" class="quiet">Request details</button
         ><button id="settingsBtn" class="quiet">Settings</button
+        ><a id="editorHelpLink" class="help-link" href="mailto:hello@raul.ws?subject=Sitefren%20help">Get help</a
         ><button id="logoutBtn" class="quiet" aria-label="Sign out">Sign out</button
         ><button id="publishBtn" class="primary">Publish ↗</button>
       </div>
@@ -3840,6 +3850,7 @@ try {
         <p class="hint" id="passwordHint">Use at least 12 characters.</p>
         <button class="primary" id="authButton" type="submit">Open editor →</button>
       </form>
+      <p><a id="setupHelpLink" class="help-link" href="mailto:hello@raul.ws?subject=Sitefren%20help">Need a hand? Get help from Raul.</a></p>
       <div id="checks" class="checks"></div>
     </main>
     <main id="app" class="app" hidden>
@@ -3887,6 +3898,18 @@ try {
         </div>
       </aside>
       <section class="workbench" aria-label="Website workspace">
+        <aside id="sponsorSpot" class="sponsor-spot" aria-label="Advertisement from Sheepdog Host">
+          <div>
+            <span class="sponsor-label">Advertisement · Sheepdog Host</span>
+            <strong>A home for your next website.</strong>
+            <p>Explore hosting, or ask us about getting your site set up.</p>
+          </div>
+          <div class="sponsor-links">
+            <a href="https://sheepdoghost.com?utm_source=sitefren&amp;utm_medium=editor&amp;utm_campaign=hosting"
+              target="_blank" rel="sponsored noopener noreferrer">Explore hosting ↗</a>
+            <a id="hostingHelpLink" href="mailto:hello@raul.ws?subject=Sitefren%20hosting%20or%20setup%20help">Get hosting or setup help</a>
+          </div>
+        </aside>
         <div class="toolbar">
           <div class="tabs" role="tablist" aria-label="Workspace views">
             <button class="active" data-tab="preview" role="tab" aria-selected="true">
@@ -3976,18 +3999,6 @@ try {
           </p>
           <div id="historyList"></div>
         </div>
-        <aside id="sponsorSpot" class="sponsor-spot" aria-label="Advertisement from Sheepdog Host">
-          <div>
-            <span class="sponsor-label">Advertisement · Sheepdog Host</span>
-            <strong>A home for your next website.</strong>
-            <p>Explore hosting, or ask us about getting your site set up.</p>
-          </div>
-          <div class="sponsor-links">
-            <a href="https://sheepdoghost.com?utm_source=sitefren&amp;utm_medium=editor&amp;utm_campaign=hosting"
-              target="_blank" rel="sponsored noopener noreferrer">Explore hosting ↗</a>
-            <a id="hostingHelpLink" href="mailto:hello@raul.ws?subject=Sitefren%20hosting%20or%20setup%20help">Get hosting or setup help</a>
-          </div>
-        </aside>
         <footer class="bench-footer">
           <span id="fileCount">0 files · Ready when you are</span
           ><a id="updateAvailable" class="update-link" href="https://github.com/raldjr/sitefren/releases"

@@ -10,7 +10,7 @@ require dirname(__DIR__) . '/sitefren.php';
 $passed = 0;
 $calls = 0;
 $http = 200;
-$reply = '[{"tag_name":"v0.1.9","draft":false,"prerelease":true}]';
+$reply = '[{"tag_name":"v0.1.10","draft":false,"prerelease":true}]';
 function check(bool $ok, string $label): void {
     global $passed;
     if (!$ok) throw new RuntimeException('FAIL: ' . $label);
@@ -49,12 +49,12 @@ try {
     catch (RuntimeException $error) { check($error->getCode() === 401 && $calls === 0, 'Authentication is checked before release traffic'); }
     $_SESSION['auth'] = $state['auth_version']; $_SESSION['seen'] = time();
     check(ps_release_version([
-        ['tag_name'=>'v0.1.9'], ['tag_name'=>'v0.1.10'], ['tag_name'=>'v99.0.0','draft'=>true],
+        ['tag_name'=>'v0.1.10'], ['tag_name'=>'v0.1.10'], ['tag_name'=>'v99.0.0','draft'=>true],
         ['tag_name'=>'<script>'], ['tag_name'=>'v0.1.11-rc.1','prerelease'=>true],
     ]) === '0.1.11-rc.1', 'Version ordering includes alpha releases and excludes drafts and malformed tags');
     check(ps_release_version([]) === null, 'An empty feed has no advertised version');
     $result = ps_check_updates(false);
-    check($result['available'] && $result['version'] === '0.1.9' &&
+    check($result['available'] && $result['version'] === '0.1.10' &&
         $result['url'] === 'https://github.com/raldjr/sitefren/releases', 'A newer release produces an official update link');
     check(!isset($result['next_attempt']) && !isset($result['fetch']), 'Internal cache metadata stays private');
     ps_check_updates(false); ps_check_updates(true);

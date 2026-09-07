@@ -1,3 +1,23 @@
+# Alpha 0.1.9 visibility and version correction
+
+Checked on September 7, 2026, with PHP 8.5.4.
+
+- The public HTML served by `https://sitefren.com/sitefren.php` contained the prior
+  committed ad and help link but still identified itself as Alpha 0.1.8. The missing
+  ad in the owner's browser was not independently reproduced; browser filtering or
+  placement remained possible explanations.
+- The corrected build identifies itself as Alpha 0.1.9, keeps that badge visible
+  on narrow screens, moves the ad above the workspace, and offers independent
+  help links on setup/sign-in and in the signed-in header.
+- PHP syntax, 125 core, 79 installation, 47 update, 88 HTTP and 61 browser checks
+  passed, along with embedded JavaScript/image-drop checks and `git diff --check`.
+- Browser assertions verify ad/help placement inside a 1366×768 viewport, help
+  visibility with the ad hidden, and mobile version/help visibility. Laptop and
+  mobile screenshots were inspected. Provider and release responses were fixtures.
+- No live AI calls, hosting replacement or in-place update was performed. GitHub
+  Release publication and representative production-host testing remain separate.
+- Version references and the SHA-256 manifest were updated together.
+
 # Unreleased hosting promotion and update notices
 
 Checked on September 7, 2026, with PHP 8.5.4.

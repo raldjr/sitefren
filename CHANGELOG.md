@@ -1,6 +1,9 @@
 # Changes
 
-## Unreleased
+## 0.1.9 — September 7, 2026
+
+- Keep the version badge visible on narrow screens, move the hosting ad above the
+  workspace, and offer independent help links on setup/sign-in and in the editor.
 
 - Show a labeled Sheepdog Host advertisement and a voluntary hosting/setup-help
   email link inside the editor, without adding ads to published websites.

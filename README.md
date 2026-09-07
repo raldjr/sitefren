@@ -5,7 +5,7 @@
 An open-source AI website editor for shared hosting. Upload one PHP file,
 describe your site, and publish real HTML, CSS and JavaScript files you own.
 
-**Alpha 0.1.8** · **PHP 8.2+** · **AGPL-3.0-only**
+**Alpha 0.1.9** · **PHP 8.2+** · **AGPL-3.0-only**
 
 [Download sitefren.php](https://github.com/raldjr/sitefren/raw/refs/heads/main/sitefren.php)
 · [Get started](docs/INSTALLATION.md)
@@ -90,6 +90,8 @@ hosting or email `hello@raul.ws` for setup help. Contact is voluntary;
 the email link contains only a generic subject, with no project data attached.
 The ad is embedded text, without an ad network, remote images, or tracking script,
 and is never inserted into published websites.
+The promotion appears above the workspace. Separate help links remain available
+on setup/sign-in and in the editor header, even if a browser hides the advertisement.
 
 ## Installation counting
 

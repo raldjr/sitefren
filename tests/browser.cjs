@@ -28,15 +28,21 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   page.on('pageerror',e=>errors.push(e.message));
   const url=`http://127.0.0.1:${port}/sitefren.php`;
   await page.goto(url);await page.locator('#authForm').waitFor({state:'visible'});
+  check(await page.locator('#setupHelpLink').isVisible(),'Setup offers help before sign-in');
+  check((await page.locator('#versionBadge').innerText())==='ALPHA 0.1.9'||(await page.locator('#versionBadge').innerText())==='Alpha 0.1.9','The shipped version is identified as Alpha 0.1.9');
   const code=fs.readFileSync(path.join(root,'builder-state.php'),'utf8').match(/Setup code: ([A-Za-z0-9_-]+)/)[1];
   await page.locator('#setupCode').fill(code);await page.locator('#password').fill('browser-testing-passphrase');await page.locator('#authButton').click();
   await page.locator('#settingsDialog').waitFor({state:'visible'});await page.locator('#cancelSettings').click();
   check(await page.locator('#app').isVisible(),'Owner setup opens the editor');
+  check(await page.locator('#editorHelpLink').isVisible(),'Signed-in owners have an independent help link');
+  await page.locator('#sponsorSpot').evaluate(el=>el.hidden=true);
+  check(await page.locator('#editorHelpLink').isVisible(),'Hiding the advertisement does not hide editor help');
+  await page.locator('#sponsorSpot').evaluate(el=>el.hidden=false);
   check(await page.locator('#sponsorSpot').isVisible(),'The editor shows a labeled hosting advertisement');
   check((await page.locator('#hostingHelpLink').getAttribute('href'))==='mailto:hello@raul.ws?subject=Sitefren%20hosting%20or%20setup%20help','Help opens an email without customer data');
   if(process.env.POCKET_TEST_TRANSPORT==='1'){
    await page.locator('#updateAvailable').waitFor({state:'visible'});
-   check((await page.locator('#updateAvailable').innerText()).includes('0.1.9'),'A newer published release shows an update notice');
+   check((await page.locator('#updateAvailable').innerText()).includes('0.1.10'),'A newer published release shows an update notice');
   }
   await page.locator('#demoBtn').click();
   const preview=page.frameLocator('#preview');await preview.locator('h1').waitFor({state:'visible'});
@@ -48,6 +54,12 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   check((await page.locator('#previewShell').boundingBox()).width<=391,'Mobile preview uses a phone-width canvas');
   await page.locator('#desktopBtn').click();
   if(process.env.SCREENSHOT_PATH){await page.locator('#toast').evaluate(el=>el.hidden=true);await page.screenshot({path:process.env.SCREENSHOT_PATH,fullPage:true})}
+  await page.setViewportSize({width:1366,height:768});
+  const adBounds=await page.locator('#sponsorSpot').boundingBox();
+  const helpBounds=await page.locator('#editorHelpLink').boundingBox();
+  check(adBounds.y>=0&&adBounds.y+adBounds.height<=768&&helpBounds.y>=0&&helpBounds.y+helpBounds.height<=768,'Ad and help are inside a laptop viewport without scrolling');
+  if(process.env.SCREENSHOT_PATH)await page.screenshot({path:process.env.SCREENSHOT_PATH+'.laptop.png',fullPage:true});
+  await page.setViewportSize({width:1440,height:1000});
   await page.getByRole('tab',{name:'Files',exact:true}).click();
   const original=await page.locator('#codeEditor').inputValue();
   const modified=original.replace('A little more','A lot more');
@@ -162,8 +174,11 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   await page.setViewportSize({width:390,height:844});await page.reload();await page.locator('#app').waitFor({state:'visible'});
   check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Mobile editor has no horizontal page overflow');
   check(await page.locator('#sponsorSpot').isVisible(),'The hosting advertisement remains visible on mobile');
+  check(await page.locator('#versionBadge').isVisible()&&await page.locator('#editorHelpLink').isVisible(),'Mobile retains the version badge and independent help link');
+  if(process.env.SCREENSHOT_PATH)await page.screenshot({path:process.env.SCREENSHOT_PATH+'.mobile.png',fullPage:true});
   await page.locator('#logoutBtn').click();await page.locator('#authForm').waitFor({state:'visible'});
   check(true,'Browser sign-out returns to the password screen');
+  check(await page.locator('#setupHelpLink').isVisible(),'Sign-in keeps the help link available');
   check(errors.length===0,'No uncaught browser JavaScript errors: '+errors.join('; '));
   process.stdout.write(`\n${passed} browser checks passed. No live model calls were made.\n`);
  }finally{if(browser)await browser.close();php.kill('SIGTERM');await delay(100);fs.rmSync(root,{recursive:true,force:true})}
