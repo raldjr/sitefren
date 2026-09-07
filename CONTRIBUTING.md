@@ -42,6 +42,8 @@ and `POCKET_TEST_TRANSPORT=1 node tests/browser.cjs` to exercise generation,
 progress streaming, catalog selection, and errors without live provider traffic.
 These runners replace cURL functions in their isolated PHP server using
 `tests/curl-fixture.php`; never upload that development fixture to a website.
+Run `node tests/mobile-pwa.cjs` for mobile view switching, installability, scoped
+service workers, offline privacy and editor-refresh checks.
 Browser tests require Playwright and Chromium. See the runner header for runtime
 path overrides.
 For UI changes, exercise setup, sign-in, the sample site, mobile preview, Files,
