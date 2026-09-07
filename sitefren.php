@@ -1,6 +1,6 @@
 <?php
 /**
- * Sitefren 0.1.9 — an uploadable AI editor for small static websites.
+ * Sitefren 0.1.10 — an uploadable AI editor for small static websites.
  * SPDX-License-Identifier: AGPL-3.0-only
  * Copyright (c) 2026 Raul Aldrete Jr. and contributors
  * Built by Raul Aldrete Jr. for Sheepdog Host.
@@ -692,7 +692,9 @@
  */
 declare(strict_types=1);
 
-const PS_VERSION = '0.1.9';
+const PS_VERSION = '0.1.10';
+// Optional embedded sponsor artwork (data:image/...;base64,...) preserves one-file delivery.
+const PS_SPONSOR_IMAGE = '';
 const PS_OUTPUT_TOKENS = 16000;
 const PS_TEXT_LIMIT = 250000;
 const PS_ASSET_LIMIT = 8000000;
@@ -3124,18 +3126,22 @@ try {
         min-height: 0;
       }
       .toolbar {
-        display: flex;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: auto minmax(240px, 1fr) auto;
         align-items: center;
-        padding: 13px 23px;
-        gap: 12px;
+        padding: 10px 16px;
+        gap: 16px;
         border-bottom: 1px solid var(--line);
         background: #fafbf8;
-        min-height: 62px;
+        min-height: 90px;
+        flex-shrink: 0;
       }
       .tabs {
         display: flex;
         gap: 4px;
+      }
+      .toolbar > .view-controls {
+        grid-column: 3;
       }
       .tabs button {
         border: 0;
@@ -3292,39 +3298,78 @@ try {
         border-top: 1px solid var(--line);
       }
       .sponsor-spot {
-        flex-shrink: 0;
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px 20px;
-        padding: 12px 23px;
-        border-top: 1px solid var(--line);
+        width: 100%;
+        max-width: 440px;
+        min-width: 0;
+        justify-self: center;
+        padding: 8px 12px;
+        border: 1px solid #e0e7d7;
+        border-radius: 8px;
         background: #f1f5e9;
         color: var(--ink);
-        font-size: 12px;
       }
-      .sponsor-spot p {
-        margin: 3px 0 0;
-        line-height: 1.5;
+      .sponsor-link {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: inherit;
+        text-decoration: none;
+      }
+      .sponsor-link:hover .sponsor-cta {
+        text-decoration: underline;
+      }
+      .sponsor-image {
+        width: 72px;
+        height: 48px;
+        flex: 0 0 72px;
+        object-fit: contain;
+        border-radius: 4px;
+      }
+      .sponsor-copy {
+        min-width: 0;
+        font-size: 12px;
+        line-height: 1.4;
       }
       .sponsor-label {
         display: block;
-        margin-bottom: 4px;
         color: #56624e;
-        font-size: 10px;
-        letter-spacing: 0.5px;
+        font-size: 9px;
+        letter-spacing: 0.4px;
         text-transform: uppercase;
       }
-      .sponsor-links {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px 16px;
+      .sponsor-copy strong {
+        display: block;
+        margin: 2px 0;
       }
-      .sponsor-links a {
+      .sponsor-cta {
         color: #304922;
+        font-size: 11px;
         text-underline-offset: 3px;
-        padding-block: 6px;
+      }
+      @media (max-width: 1200px) {
+        .toolbar {
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 10px;
+        }
+        .toolbar .sponsor-spot {
+          grid-column: 1 / -1;
+          grid-row: 2;
+        }
+        .toolbar > .view-controls {
+          grid-column: 2;
+        }
+      }
+      @media (max-width: 440px) {
+        .toolbar {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .toolbar .sponsor-spot {
+          grid-row: 3;
+        }
+        .toolbar > .view-controls {
+          grid-column: 1;
+          grid-row: 2;
+        }
       }
       .panel {
         padding: 24px;
@@ -3898,18 +3943,6 @@ try {
         </div>
       </aside>
       <section class="workbench" aria-label="Website workspace">
-        <aside id="sponsorSpot" class="sponsor-spot" aria-label="Advertisement from Sheepdog Host">
-          <div>
-            <span class="sponsor-label">Advertisement · Sheepdog Host</span>
-            <strong>A home for your next website.</strong>
-            <p>Explore hosting, or ask us about getting your site set up.</p>
-          </div>
-          <div class="sponsor-links">
-            <a href="https://sheepdoghost.com?utm_source=sitefren&amp;utm_medium=editor&amp;utm_campaign=hosting"
-              target="_blank" rel="sponsored noopener noreferrer">Explore hosting ↗</a>
-            <a id="hostingHelpLink" href="mailto:hello@raul.ws?subject=Sitefren%20hosting%20or%20setup%20help">Get hosting or setup help</a>
-          </div>
-        </aside>
         <div class="toolbar">
           <div class="tabs" role="tablist" aria-label="Workspace views">
             <button class="active" data-tab="preview" role="tab" aria-selected="true">
@@ -3918,6 +3951,19 @@ try {
             ><button data-tab="assets" role="tab" aria-selected="false">Images</button
             ><button data-tab="history" role="tab" aria-selected="false">History</button>
           </div>
+          <aside id="sponsorSpot" class="sponsor-spot" aria-label="Advertisement from Sheepdog Host">
+            <a class="sponsor-link" href="https://sheepdoghost.com?utm_source=sitefren&amp;utm_medium=editor&amp;utm_campaign=hosting"
+              target="_blank" rel="sponsored noopener noreferrer">
+              <?php if (PS_SPONSOR_IMAGE !== ''): ?>
+                <img class="sponsor-image" src="<?= htmlspecialchars(PS_SPONSOR_IMAGE, ENT_QUOTES) ?>" alt="" />
+              <?php endif; ?>
+              <span class="sponsor-copy">
+                <span class="sponsor-label">Advertisement · Sheepdog Host</span>
+                <strong>A home for your next website.</strong>
+                <span class="sponsor-cta">Explore hosting ↗</span>
+              </span>
+            </a>
+          </aside>
           <div class="view-controls" id="viewControls">
             <select id="pageSelect" aria-label="Preview page">
               <option>index.html</option></select
@@ -4055,6 +4101,8 @@ try {
         >
         <p class="hint" id="updateStatus">Sitefren <?= PS_VERSION ?> · Updates are checked while you use the editor.</p>
         <button type="button" id="checkUpdatesBtn">Check for updates</button>
+        <p><a id="releaseDownloads" class="help-link" href="https://github.com/raldjr/sitefren/releases"
+          target="_blank" rel="noopener noreferrer">View releases and downloads ↗</a></p>
         <p class="hint">To upgrade, back up your private state and published files, then upload only the new sitefren.php.</p>
         <div class="dialog-actions">
           <button type="button" id="cancelSettings">Cancel</button

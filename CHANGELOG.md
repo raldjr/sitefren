@@ -1,5 +1,16 @@
 # Changes
 
+## 0.1.10 — September 7, 2026
+
+- Publish tagged releases through GitHub Actions after version, checksum, and
+  regression checks, attaching the standalone PHP download and checksums.
+- Link the README to the versioned release download, and keep a release/download
+  link available in Settings alongside the update check.
+
+- Place a compact hosting advertisement between workspace tabs and preview
+  controls, wrapping to its own row on smaller screens. Support optional embedded
+  sponsor artwork and keep the independent header help link.
+
 ## 0.1.9 — September 7, 2026
 
 - Keep the version badge visible on narrow screens, move the hosting ad above the

@@ -21,7 +21,8 @@ a one-minute minimum interval. These checks do not change the draft revision.
 There is no background service or push connection: notices appear during use.
 Set `POCKET_UPDATE_CHECKS=0` in the hosting environment to disable checks.
 
-The footer links to the official release page when a newer release exists. The
+The footer links to the official release page when a newer release exists. Settings
+also keeps a **View releases and downloads** link available. The
 owner backs up private state and published files, then replaces only `sitefren.php`
 through their hosting file manager. An unavailable or empty feed is reported
 explicitly; neither is presented as proof that the installation is up to date.
@@ -32,7 +33,38 @@ Follow CONTRIBUTING.md's release checks, update the shipped version, and publish
 a GitHub Release with a supported matching version tag, release notes, the
 standalone `sitefren.php`, and checksums. Publish prereleases explicitly while the
 app remains alpha. The ten most recent release entries must include the currently
-recommended version. The feed was reachable but empty on September 7, 2026.
+recommended version.
+
+The `Publish release` GitHub Actions workflow runs when a `v*` version tag is pushed.
+It verifies that the tag matches the app, docs, changelog and complete checksum
+manifest, then runs core, installation, update, HTTP and JavaScript checks. It
+creates a draft release, uploads the standalone PHP file, source checksums, and a
+separate download checksum, then publishes the alpha prerelease. Source archives
+are supplied by GitHub. The workflow uses GitHub's scoped token; no personal key
+is distributed or required by the installed editor.
+
+Publisher sequence after local browser validation and compatibility review:
+
+```sh
+git push origin main
+git tag -a v0.1.10 -m "Sitefren Alpha 0.1.10"
+git push origin v0.1.10
+```
+
+Use the new version for each shipment. Watch the workflow finish and verify the
+published file against its checksum before announcing it. If publishing fails
+after creating a draft, inspect that draft and workflow logs before retrying;
+the workflow does not overwrite an existing release.
+
+The README's versioned asset link always downloads the file from that release,
+not an unreleased edit on main. GitHub's `/releases/latest` shortcuts omit
+prereleases, so use `/releases` as the general alpha release destination.
+
+Editors with release checking discover a new published version on their next
+eligible check during use, usually within a day of publication. **Check for
+updates** bypasses the daily cache after the one-minute cooldown. Older builds
+without this checker need to be upgraded manually once. This is polling during
+use, not a push notification to closed browsers or idle hosting accounts.
 
 ## Proposed in-place installation
 

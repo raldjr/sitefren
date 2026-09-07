@@ -89,7 +89,7 @@ with tempfile.TemporaryDirectory(prefix='pocket-http-') as tmp:
         update_status,update=request('check_updates',{})
         check(update_status==200 and update['status']==('checked' if fixture else 'disabled'),'Update checks respect host settings and parse fixture releases')
         if fixture:
-            check(update['available'] and update['version']=='0.1.10' and update['url']=='https://github.com/raldjr/sitefren/releases','New alpha releases return a fixed official download link')
+            check(update['available'] and update['version']=='0.1.11' and update['url']=='https://github.com/raldjr/sitefren/releases','New alpha releases return a fixed official download link')
             cached=(root/'builder-state.php').read_bytes()
             check(request('check_updates',{'force':True})[1]==update and (root/'builder-state.php').read_bytes()==cached,'Repeated and forced checks within a minute reuse cached data')
         status,state=request('demo',{})

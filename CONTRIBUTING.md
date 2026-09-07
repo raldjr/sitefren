@@ -61,6 +61,13 @@ images, or private runtime files. Reproduction cases must use synthetic data.
 6. Regenerate `SHA256SUMS` for all tracked release files except the manifest itself.
 7. Publish source, the standalone file, release notes, and checksums together.
 
+Pushing a matching `vX.Y.Z` tag triggers `.github/workflows/release.yml` to verify
+the release and publish its files as a GitHub prerelease. Run
+`python3 scripts/release.py vX.Y.Z /tmp/sitefren-release` locally first to check
+version/download-link consistency, manifest coverage and release notes. The
+workflow does not replace local browser or representative hosting validation.
+See docs/UPDATES.md for publishing and client discovery behavior.
+
 The release must clearly distinguish supported behavior, known limits, and
 features that remain planned. Submit changes through a pull request to this repository.
 

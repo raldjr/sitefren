@@ -1,3 +1,38 @@
+# Alpha 0.1.10 release validation
+
+Checked on September 7, 2026, with PHP 8.5.4 and Chromium via Playwright.
+
+- PHP syntax, 125 core, 79 installation, 47 update, 88 HTTP and 64 browser checks
+  passed, together with embedded JavaScript/image-drop checks. Provider and
+  release responses were fixtures; no live inference was billed.
+- The toolbar ad was checked with and without embedded artwork, on desktop and
+  mobile. Published websites do not receive the editor promotion. Independent
+  help and visible version labels remain available.
+- Release preparation verifies matching PHP/docs/tag versions, a versioned README
+  download URL, changelog notes, and SHA-256 coverage of every tracked source file.
+  Published assets are limited to the editor and checksum files; source archives
+  come from the tagged repository. No private runtime state or credentials are
+  included in those assets.
+- Tagged-release automation runs PHP/core/installation/update/HTTP/JavaScript
+  checks before publishing. Local browser validation is a separate release gate.
+- No changes were made to AI provider adapters. Live provider requests and
+  representative production-host testing were not repeated for this UI/release
+  update. In-place self-updating is not implemented.
+
+# Toolbar advertisement layout review before 0.1.10
+
+Checked on September 7, 2026.
+
+- PHP syntax, embedded JavaScript/image-drop checks, `git diff --check`, and all
+  64 browser checks passed with fixture provider/release responses.
+- Browser checks cover placement between tabs and preview controls, a 440-pixel
+  width cap, a bounded embedded image, mobile wrapping, independent help, and
+  publishing without inserting the editor ad into site files.
+- Text-only, image-and-text, and mobile screenshots were inspected. The image
+  screenshot uses a synthetic SH tile for layout testing, not final sponsor artwork.
+- This layout is a local, unreleased preview; no release version or checksum
+  manifest was changed and nothing was deployed.
+
 # Alpha 0.1.9 visibility and version correction
 
 Checked on September 7, 2026, with PHP 8.5.4.

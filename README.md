@@ -5,9 +5,9 @@
 An open-source AI website editor for shared hosting. Upload one PHP file,
 describe your site, and publish real HTML, CSS and JavaScript files you own.
 
-**Alpha 0.1.9** · **PHP 8.2+** · **AGPL-3.0-only**
+**Alpha 0.1.10** · **PHP 8.2+** · **AGPL-3.0-only**
 
-[Download sitefren.php](https://github.com/raldjr/sitefren/raw/refs/heads/main/sitefren.php)
+[Download sitefren.php](https://github.com/raldjr/sitefren/releases/download/v0.1.10/sitefren.php)
 · [Get started](docs/INSTALLATION.md)
 · [Changes](CHANGELOG.md)
 · [Report a bug](https://github.com/raldjr/sitefren/issues/new/choose)
@@ -39,7 +39,7 @@ stylesheets, scripts and images, and continues to work independently of Sitefren
 
 ## Start in a few steps
 
-1. [Download sitefren.php](https://github.com/raldjr/sitefren/raw/refs/heads/main/sitefren.php). If your browser displays source, save the raw file as `sitefren.php`.
+1. [Download sitefren.php](https://github.com/raldjr/sitefren/releases/download/v0.1.10/sitefren.php). If your browser displays source, save the raw file as `sitefren.php`.
 2. Upload **only that file** into an empty folder on compatible hosting.
 3. Visit `https://your-domain.example/sitefren.php` (include your folder if needed).
 4. Open the automatically created `builder-state.php` in your hosting file manager.
@@ -90,8 +90,13 @@ hosting or email `hello@raul.ws` for setup help. Contact is voluntary;
 the email link contains only a generic subject, with no project data attached.
 The ad is embedded text, without an ad network, remote images, or tracking script,
 and is never inserted into published websites.
-The promotion appears above the workspace. Separate help links remain available
+The promotion is a compact card between the workspace tabs and preview controls.
+On narrower screens it moves to its own toolbar row. Separate help links remain available
 on setup/sign-in and in the editor header, even if a browser hides the advertisement.
+For an image-and-text creative, the publisher can set `PS_SPONSOR_IMAGE` in the PHP
+file to an embedded image data URI (for example, a base64 PNG). Artwork fits inside
+a 72×48-pixel area without cropping; an empty value keeps the ad text-only. No
+separate image upload or external image request is required by the installed editor.
 
 ## Installation counting
 
