@@ -17,6 +17,8 @@
  * POCKET_PASSWORD_HASH=<password_hash() result; skips first-run setup>
  * POCKET_STATE_PATH=<absolute private path ending in .php>
  * POCKET_HTTPS=1 (only when your trusted reverse proxy terminates HTTPS)
+ * POCKET_INSTALL_TRACKING=0 (disable the automatic installation-count event)
+ * POCKET_UPDATE_CHECKS=0 (disable checks for published GitHub releases)
  * Do not distribute a shared master API key. See README.md and SECURITY.md.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -846,6 +848,7 @@ function ps_new_state(): array {
         'pending' => null,
         'last_error' => null,
         'attempts' => [],
+        'installation' => ['id' => bin2hex(random_bytes(16)), 'sent' => false, 'next_attempt' => 0],
     ];
 }
 function ps_load(): array {
@@ -908,7 +911,193 @@ function ps_locked(callable $callback): mixed {
         $GLOBALS['ps_lock_active'] = false;
         flock($handle, LOCK_UN);
         fclose($handle);
+        if (isset($state)) {
+            ps_schedule_installation($state);
+        }
     }
+}
+function ps_schedule_installation(array $state): void {
+    if (PHP_SAPI === 'cli' || PHP_SAPI === 'cli-server' ||
+        getenv('POCKET_INSTALL_TRACKING') === '0' ||
+        !function_exists('curl_init') || !empty($state['installation']['sent']) ||
+        ($state['installation']['next_attempt'] ?? 0) > time() ||
+        !empty($GLOBALS['ps_installation_scheduled'])) {
+        return;
+    }
+    $GLOBALS['ps_installation_scheduled'] = true;
+    register_shutdown_function('ps_report_installation');
+}
+function ps_report_installation(): void {
+    if (getenv('POCKET_INSTALL_TRACKING') === '0' ||
+        !function_exists('curl_init') || !empty($GLOBALS['ps_lock_active'])) {
+        return;
+    }
+    try {
+        // Reserve the attempt under the lock; send only after releasing it.
+        $id = ps_locked(static function (array $state): ?string {
+            $state['installation'] ??= [
+                'id' => bin2hex(random_bytes(16)), 'sent' => false, 'next_attempt' => 0,
+            ];
+            if ($state['installation']['sent'] || $state['installation']['next_attempt'] > time()) {
+                return null;
+            }
+            $state['installation']['next_attempt'] = time() + 86400;
+            ps_save($state);
+            return $state['installation']['id'];
+        });
+        if ($id === null || !ps_send_installation($id)) {
+            return;
+        }
+        ps_locked(static function (array $state) use ($id): void {
+            if (($state['installation']['id'] ?? null) === $id) {
+                $state['installation']['sent'] = true;
+                ps_save($state);
+            }
+        });
+    } catch (Throwable $exception) {
+        // Counting must never change an editor result or expose an error to the owner.
+    }
+}
+function ps_send_installation(string $id): bool {
+    $handle = curl_init('https://analytics.molondigital.com/api/track');
+    if ($handle === false) {
+        return false;
+    }
+    $body = '';
+    try {
+        curl_setopt_array($handle, [
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_USERAGENT => 'Sitefren/' . PS_VERSION,
+            CURLOPT_POSTFIELDS => ps_json([
+                'site_id' => 'da0e8d634b5b',
+                'type' => 'custom_event',
+                'hostname' => 'installs.sitefren.com',
+                'pathname' => '/install',
+                'user_id' => $id,
+                'event_name' => 'installation_created',
+                'properties' => ps_json(['installation_id' => $id, 'version' => PS_VERSION]),
+            ]),
+            CURLOPT_CONNECTTIMEOUT_MS => 500,
+            CURLOPT_TIMEOUT_MS => 1500,
+            CURLOPT_NOSIGNAL => true,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_WRITEFUNCTION => static function ($handle, string $chunk) use (&$body): int {
+                if (strlen($body) + strlen($chunk) > 4096) {
+                    return 0;
+                }
+                $body .= $chunk;
+                return strlen($chunk);
+            },
+        ]);
+        $ok = curl_exec($handle);
+        $status = curl_getinfo($handle, CURLINFO_HTTP_CODE);
+        $result = json_decode($body, true);
+        // Rybbit also returns success:true when filtering an event, with a message.
+        return $ok !== false && $status >= 200 && $status < 300 &&
+            is_array($result) && ($result['success'] ?? false) === true &&
+            !isset($result['message']);
+    } finally {
+        curl_close($handle);
+    }
+}
+function ps_release_version(array $releases): ?string {
+    $latest = null;
+    foreach ($releases as $release) {
+        if (!is_array($release) || !empty($release['draft']) ||
+            !is_string($release['tag_name'] ?? null)) {
+            continue;
+        }
+        // Alpha releases are included; tags must match the shipped version format.
+        if (!preg_match('/^v?(\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.?\d*)?)$/D', $release['tag_name'], $match)) {
+            continue;
+        }
+        if ($latest === null || version_compare($match[1], $latest, '>')) {
+            $latest = $match[1];
+        }
+    }
+    return $latest;
+}
+function ps_fetch_release_version(): ?string {
+    if (!function_exists('curl_init')) {
+        throw new RuntimeException('Update checks require PHP cURL.');
+    }
+    $handle = curl_init('https://api.github.com/repos/raldjr/sitefren/releases?per_page=10');
+    if ($handle === false) {
+        throw new RuntimeException('Could not check releases.');
+    }
+    $body = '';
+    try {
+        curl_setopt_array($handle, [
+            CURLOPT_HTTPHEADER => ['Accept: application/vnd.github+json'],
+            CURLOPT_USERAGENT => 'Sitefren/' . PS_VERSION,
+            CURLOPT_CONNECTTIMEOUT_MS => 1000,
+            CURLOPT_TIMEOUT_MS => 3000,
+            CURLOPT_NOSIGNAL => true,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_WRITEFUNCTION => static function ($handle, string $chunk) use (&$body): int {
+                if (strlen($body) + strlen($chunk) > 262144) {
+                    return 0;
+                }
+                $body .= $chunk;
+                return strlen($chunk);
+            },
+        ]);
+        $ok = curl_exec($handle);
+        $releases = json_decode($body, true);
+        if ($ok === false || curl_getinfo($handle, CURLINFO_HTTP_CODE) !== 200 ||
+            !is_array($releases) || !array_is_list($releases)) {
+            throw new RuntimeException('Could not check releases.');
+        }
+        return ps_release_version($releases);
+    } finally {
+        curl_close($handle);
+    }
+}
+function ps_check_updates(bool $force): array {
+    $check = ps_locked(static function (array $state) use ($force): array {
+        if (!ps_authorized($state)) {
+            ps_fail('Please sign in again.', 401);
+        }
+        if (getenv('POCKET_UPDATE_CHECKS') === '0') {
+            return ['status' => 'disabled'];
+        }
+        $cached = $state['update_check'] ?? ['status' => 'unchecked'];
+        if (($cached['next_attempt'] ?? 0) > time() &&
+            (!$force || ($cached['attempted_at'] ?? 0) > time() - 60)) {
+            return $cached;
+        }
+        $state['update_check'] = $cached + ['status' => 'unchecked'];
+        $state['update_check']['attempted_at'] = time();
+        $state['update_check']['next_attempt'] = time() + 60;
+        ps_save($state);
+        return ['fetch' => true];
+    });
+    if (!empty($check['fetch'])) {
+        session_write_close();
+        try {
+            $version = ps_fetch_release_version();
+            $check = ['status' => $version === null ? 'no_release' : 'checked', 'version' => $version];
+        } catch (Throwable $exception) {
+            $check = ['status' => 'unavailable'];
+        }
+        $check['checked_at'] = gmdate('c');
+        $check['attempted_at'] = time();
+        $check['next_attempt'] = time() + ($check['status'] === 'unavailable' ? 3600 : 86400);
+        ps_locked(static function (array $state) use ($check): void {
+            $state['update_check'] = $check;
+            ps_save($state);
+        });
+    }
+    return array_intersect_key($check, array_flip(['status', 'version', 'checked_at'])) + [
+        'available' => ($check['status'] ?? '') === 'checked' &&
+            version_compare($check['version'], PS_VERSION, '>'),
+        'url' => 'https://github.com/raldjr/sitefren/releases',
+    ];
 }
 function ps_ensure_homepage(array &$state): void {
     if ($state['journal'] || isset($state['published']['index.html'])) {
@@ -2290,6 +2479,9 @@ if (isset($_GET['action'])) {
                 ps_fail('Expected a JSON object.');
             }
         }
+        if ($action === 'check_updates') {
+            ps_reply(ps_check_updates(($input['force'] ?? false) === true));
+        }
         if ($action === 'models') {
             $provider = $input['provider'] ?? '';
             if (
@@ -2766,6 +2958,11 @@ try {
         gap: 10px;
         align-items: center;
       }
+      .update-link {
+        color: #304922;
+        font-size: 12px;
+        text-underline-offset: 3px;
+      }
       .subtle {
         color: var(--muted);
         font-size: 12px;
@@ -3085,11 +3282,47 @@ try {
       }
       .bench-footer {
         display: flex;
+        flex-wrap: wrap;
+        gap: 6px 16px;
         justify-content: space-between;
         padding: 10px 23px;
         color: #89907f;
         font-size: 10px;
         border-top: 1px solid var(--line);
+      }
+      .sponsor-spot {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px 20px;
+        padding: 12px 23px;
+        border-top: 1px solid var(--line);
+        background: #f1f5e9;
+        color: var(--ink);
+        font-size: 12px;
+      }
+      .sponsor-spot p {
+        margin: 3px 0 0;
+        line-height: 1.5;
+      }
+      .sponsor-label {
+        display: block;
+        margin-bottom: 4px;
+        color: #56624e;
+        font-size: 10px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+      }
+      .sponsor-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+      }
+      .sponsor-links a {
+        color: #304922;
+        text-underline-offset: 3px;
+        padding-block: 6px;
       }
       .panel {
         padding: 24px;
@@ -3589,6 +3822,11 @@ try {
             Open <code>builder-state.php</code> in your hosting file manager. The code is on its
             first line.
           </p>
+          <p class="hint">
+            Sitefren automatically reports a random installation ID and app version to count
+            installs. Your site URL, content, and credentials are not sent. The analytics
+            server receives your hosting server's IP address.
+          </p>
         </div>
         <label for="password">Editor password</label
         ><input
@@ -3738,9 +3976,22 @@ try {
           </p>
           <div id="historyList"></div>
         </div>
+        <aside id="sponsorSpot" class="sponsor-spot" aria-label="Advertisement from Sheepdog Host">
+          <div>
+            <span class="sponsor-label">Advertisement · Sheepdog Host</span>
+            <strong>A home for your next website.</strong>
+            <p>Explore hosting, or ask us about getting your site set up.</p>
+          </div>
+          <div class="sponsor-links">
+            <a href="https://sheepdoghost.com?utm_source=sitefren&amp;utm_medium=editor&amp;utm_campaign=hosting"
+              target="_blank" rel="sponsored noopener noreferrer">Explore hosting ↗</a>
+            <a id="hostingHelpLink" href="mailto:hello@raul.ws?subject=Sitefren%20hosting%20or%20setup%20help">Get hosting or setup help</a>
+          </div>
+        </aside>
         <footer class="bench-footer">
           <span id="fileCount">0 files · Ready when you are</span
-          ><span
+          ><a id="updateAvailable" class="update-link" href="https://github.com/raldjr/sitefren/releases"
+            target="_blank" rel="noopener noreferrer" hidden>Update available ↗</a><span
             >Source: <a href="https://github.com/raldjr/sitefren" target="_blank" rel="noopener noreferrer">GitHub</a> · Built by
             <a href="https://raul.ws?utm_source=sitefren" target="_blank" rel="noopener noreferrer">Raul Aldrete</a>
             for
@@ -3791,6 +4042,9 @@ try {
         <label class="inline-check" id="clearKeyLabel"
           ><input type="checkbox" id="clearKey" />Remove the saved key</label
         >
+        <p class="hint" id="updateStatus">Sitefren <?= PS_VERSION ?> · Updates are checked while you use the editor.</p>
+        <button type="button" id="checkUpdatesBtn">Check for updates</button>
+        <p class="hint">To upgrade, back up your private state and published files, then upload only the new sitefren.php.</p>
         <div class="dialog-actions">
           <button type="button" id="cancelSettings">Cancel</button
           ><button class="primary" type="submit">Save connection</button>
@@ -3834,6 +4088,32 @@ try {
         visualCollectTimer,
         selectionMode = null,
         selectedElement = null;
+      let updateCheckStarted = false;
+      async function checkUpdates(force = false) {
+        byId('checkUpdatesBtn').disabled = true;
+        if (force) byId('updateStatus').textContent = 'Checking published releases…';
+        try {
+          const result = await api('check_updates', { force });
+          if (!state?.authenticated) return;
+          byId('updateAvailable').hidden = !result.available;
+          byId('updateAvailable').textContent = `Update available: ${result.version} ↗`;
+          const messages = {
+            checked: result.available
+              ? `Sitefren ${result.version} is available. Open the update link to review and download it.`
+              : `Sitefren ${state.version} · No newer published version found.`,
+            no_release: 'No published release was found. You can check again later.',
+            unavailable: 'Could not reach the release service. Try again later.',
+            disabled: 'Update checks are disabled by your hosting configuration.',
+            unchecked: 'Another update check may be running. Try again shortly.',
+          };
+          byId('updateStatus').textContent = messages[result.status] || messages.unavailable;
+        } catch (error) {
+          if (state?.authenticated) byId('updateStatus').textContent = 'Could not check for updates. Try again later.';
+        } finally {
+          byId('checkUpdatesBtn').disabled = false;
+        }
+      }
+      byId('checkUpdatesBtn').addEventListener('click', () => checkUpdates(true));
       function notice(message, error = false) {
         clearTimeout(toastTimer);
         byId('toast').textContent = message;
@@ -3989,6 +4269,8 @@ try {
         byId('app').hidden = !state.authenticated;
         byId('topActions').hidden = !state.authenticated;
         if (!state.authenticated) {
+          updateCheckStarted = false;
+          byId('updateAvailable').hidden = true;
           byId('authForm').hidden = false;
           byId('gateTitle').textContent = state.setup ? 'Make yourself at home.' : 'Welcome back.';
           byId('gateText').textContent = state.setup
@@ -4007,6 +4289,10 @@ try {
             ].map((t) => textElement('span', t, 'check')),
           );
           return;
+        }
+        if (!updateCheckStarted) {
+          updateCheckStarted = true;
+          checkUpdates();
         }
         byId('providerStatus').textContent =
           state.config.has_key && state.config.model

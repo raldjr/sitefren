@@ -74,6 +74,46 @@ and reload. Existing drafts, password and saved provider settings remain.
 Moving from the earlier `builder.php` filename? Upload `sitefren.php` into the
 same folder, sign in, then remove the old editor. **Keep `builder-state.php`.**
 
+The editor checks the official GitHub release feed after sign-in, caching successful
+checks for a day. A newer published version shows an update link in the footer;
+Settings also has **Check for updates**. Failed checks retry on a later visit after
+an hour. Manual checks are limited to once a minute. These checks send the app
+version as a user agent, but no installation ID, customer URL, project data, or
+provider key. GitHub receives the hosting server's IP through the connection.
+Set `POCKET_UPDATE_CHECKS=0` to disable checks. Updates are downloaded and uploaded
+manually; this version does not replace itself. See [updates](docs/UPDATES.md).
+
+## Hosting and setup help
+
+The editor includes a labeled Sheepdog Host advertisement with links to explore
+hosting or email `hello@raul.ws` for setup help. Contact is voluntary;
+the email link contains only a generic subject, with no project data attached.
+The ad is embedded text, without an ad network, remote images, or tracking script,
+and is never inserted into published websites.
+
+## Installation counting
+
+On the first production visit that initializes private state, Sitefren automatically
+sends an `installation_created` event to our self-hosted Rybbit instance at
+`analytics.molondigital.com`. It contains a random installation ID and app version.
+The event uses the fixed analytics label `installs.sitefren.com`; it does not send
+your site's domain, URL, content, prompts, credentials, or visitor information.
+The analytics service receives your hosting server's IP address through the
+connection and may derive network/location information or retain it in server logs.
+This is installation counting, not anonymous browsing analytics or a sales contact list.
+
+The ID and delivery status are saved in `builder-state.php`. Reloads and upgrades
+keep that identity; copied state shares it, and deleting state creates a new one.
+Existing installations register when first visited after this update. Delivery
+uses PHP cURL with a 1.5-second limit, outside the project lock, at request shutdown.
+Failures do not change the editor result; another visit may retry after 24 hours.
+Delivery is best effort, so counts can miss installations or contain repeat events;
+count distinct `installation_id` values on this event instead of raw event totals.
+
+Set the hosting environment variable `POCKET_INSTALL_TRACKING=0` before opening
+the editor to disable reporting. PHP CLI and its built-in development server never
+automatically report. No tracking script is added to the editor or published sites.
+
 ## Alpha scope and limitations
 
 - Generated sites are currently static. Generated PHP, databases, e-commerce
@@ -114,6 +154,8 @@ and [the authentication overview](docs/AUTHENTICATION.md).
 ```sh
 php -l sitefren.php
 php tests/core.php
+php -d disable_functions=curl_init,curl_setopt_array,curl_exec,curl_getinfo,curl_close tests/installations.php
+php -d disable_functions=curl_init,curl_setopt_array,curl_exec,curl_getinfo,curl_close tests/updates.php
 node tests/image-drop.cjs
 POCKET_TEST_TRANSPORT=1 python3 tests/integration.py
 ```

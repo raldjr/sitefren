@@ -10,6 +10,13 @@ function curl_errno($ch){return $ch->errno;}
 function curl_close($ch){}
 function curl_exec($ch){
     $options=$ch->options;
+    if($ch->url==='https://api.github.com/repos/raldjr/sitefren/releases?per_page=10'){
+        if(!empty($options[CURLOPT_POST])||isset($options[CURLOPT_POSTFIELDS]))throw new RuntimeException('Update check must not send project data');
+        foreach($options[CURLOPT_HTTPHEADER] as $header)if(str_starts_with($header,'Authorization:'))throw new RuntimeException('Update check must not send credentials');
+        $body=json_encode([['tag_name'=>'v0.1.9','draft'=>false,'prerelease'=>true]]);
+        ($options[CURLOPT_WRITEFUNCTION])($ch,$body);
+        return true;
+    }
     if(!str_starts_with($ch->url,'https://api.concentrate.ai/')&&!str_starts_with($ch->url,'https://openrouter.ai/'))throw new RuntimeException('Unexpected provider destination');
     if(empty($options[CURLOPT_POST])){
         foreach($options[CURLOPT_HTTPHEADER] as $header)if(str_starts_with($header,'Authorization:'))throw new RuntimeException('A key was sent to a public catalog');

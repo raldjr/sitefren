@@ -44,6 +44,12 @@ storage setting described below on a hosting service you control.
 
 ## Upgrade an existing alpha
 
+Production visits automatically register a random installation ID and app version
+with Sitefren's Rybbit analytics, including existing installs after this update.
+Your site URL and content are not sent; the service receives your hosting server's
+IP address. To disable reporting, set `POCKET_INSTALL_TRACKING=0` in your hosting
+environment before visiting the editor. See [installation counting](../README.md#installation-counting).
+
 Upload `sitefren.php` into the same folder as your existing installation.
 Keep `builder-state.php`, its lock, and all published files. Back up private state
 first. Open `sitefren.php` and sign in with your existing password; drafts and

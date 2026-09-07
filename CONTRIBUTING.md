@@ -29,6 +29,12 @@ Run `php -l sitefren.php`, `php tests/core.php`, and `python3 tests/integration.
 Run `node tests/image-drop.cjs` for embedded JavaScript syntax and image upload
 handler checks. This check requires only Node.js; it does not replace browser tests.
 Add focused regression checks for file safety, data loss, and credential handling.
+Run `php -d disable_functions=curl_init,curl_setopt_array,curl_exec,curl_getinfo,curl_close tests/installations.php`
+for isolated installation reporting checks. These replace cURL and never send
+analytics. CLI and built-in-server development runs skip automatic reporting.
+Run the same command with `tests/updates.php` for release-check cache, authentication,
+version ordering, and transport-failure coverage. HTTP/browser runners disable
+release traffic unless the isolated fixture transport is enabled.
 With cURL enabled, run `POCKET_TEST_TRANSPORT=1 python3 tests/integration.py`
 and `POCKET_TEST_TRANSPORT=1 node tests/browser.cjs` to exercise generation,
 progress streaming, catalog selection, and errors without live provider traffic.

@@ -1,3 +1,46 @@
+# Unreleased hosting promotion and update notices
+
+Checked on September 7, 2026, with PHP 8.5.4.
+
+- PHP syntax, 125 core checks, 47 isolated update checks, 88 HTTP checks with the
+  provider/release fixture, and 54 Playwright browser checks passed. Embedded
+  JavaScript/image-drop checks passed.
+- Update checks cover authentication, CSRF, bounded fixed-origin requests, version
+  ordering (including alpha releases), cache reuse, host opt-out, invalid responses,
+  rate limiting, and missing releases. No private project data is sent.
+- Browser coverage includes the labeled editor ad, a help link without customer
+  data, the update notice, publishing without ads, mobile layout, sign-out and no
+  uncaught JavaScript errors. The stale tagline assertion was replaced with the
+  current promotion's mobile visibility check.
+- The desktop screenshot was inspected. The ad sits below the preview and above
+  the footer. `/tmp/sitefren-ad-desktop.png` is a local review artifact.
+- The public GitHub releases feed returned HTTP 200 and an empty array. No release
+  was published and no in-place update was performed. Automatic notifications
+  require a published GitHub Release with a supported version tag.
+- `git diff --check` passed. Changes remain unreleased; checksums were not rebuilt.
+
+# Unreleased installation counting validation
+
+Checked on September 7, 2026, with PHP 8.5.4.
+
+- PHP syntax, 125 core checks, 83 HTTP checks with the provider fixture, and
+  embedded JavaScript/image-drop checks passed.
+- 79 isolated installation checks passed using replaced cURL functions: stable
+  identity, older-state registration, payload limits, no customer URL or credential
+  fields, delivery outside the state lock, competing attempts, daily retries,
+  opt-out, HTTP/transport failures and Rybbit's filtered-success response.
+- Playwright with the provider fixture passed 47 checks, then failed the existing
+  assertion for the absent "Bringing power back to shared hosting." tagline.
+  An unchanged HEAD copy reproduced that same failure. Later sign-out and final
+  JavaScript-error assertions were not reached; this is not a full browser pass.
+- A labeled `installation_tracking_test` event was accepted by the configured
+  Rybbit installs site and its presence in the dashboard was confirmed by the owner
+  before implementation. Automated tests sent no live analytics or provider calls.
+- Automatic production shutdown scheduling has not been exercised on a deployed
+  host. Built-in-server and CLI runs intentionally skip automatic reporting.
+- `git diff --check` passed. This is an unreleased change; release checksums were
+  not regenerated.
+
 # Alpha 0.1.8 validation
 
 Checked on September 6, 2026.

@@ -55,6 +55,24 @@ customer accounts without a hosting trial and review.
 
 ## Important limits
 
+Authenticated update checks fetch only the fixed public GitHub release feed,
+without project data or keys. Responses are size/time bounded and version tags
+are validated; the UI uses a fixed official release link, not an upstream-provided
+URL or HTML. Nothing is downloaded for execution or installed automatically.
+GitHub receives the hosting server IP and app version. `POCKET_UPDATE_CHECKS=0`
+disables these requests. The hosting ad contains static links and no third-party
+script; its contact link does not attach customer URLs or content.
+
+Installation counting automatically sends a random persistent installation ID and
+app version to `https://analytics.molondigital.com/api/track`, using a fixed site ID
+and hostname label. No customer domain, content, credentials or visitor IP is
+forwarded. The receiving service sees the hosting server's source IP and may
+derive network/location metadata or retain access logs. No browser script, replay,
+or automatic error capture is loaded. Set `POCKET_INSTALL_TRACKING=0` in the host
+environment to disable sending. See README.md for identity and retry behavior.
+The public ingestion endpoint cannot authenticate a distributed open-source
+installation; these counts are approximate and can be forged, not license evidence.
+
 **Published JavaScript shares the site's origin.** Preview isolation does not
 make arbitrary published code trustworthy. A published script can act with the
 authority of a visitor on that origin, including an editor user who is signed

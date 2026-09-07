@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Show a labeled Sheepdog Host advertisement and a voluntary hosting/setup-help
+  email link inside the editor, without adding ads to published websites.
+- Check published GitHub releases after sign-in, cache the result, and show an
+  update link with a manual check in Settings. No in-place installer is included;
+  document the signed release workflow needed for that future feature.
+
+- Count initialized production installations through a direct Rybbit event with a
+  persistent random ID and app version. Exclude customer URLs and content; disclose
+  reporting in setup and documentation, with a host environment opt-out. Keep
+  delivery outside project locks, bound its duration, and retry failures daily.
+
 - Use the supplied Sitefren SVG as the embedded browser favicon.
 - Accept static SVG uploads through the picker and drag and drop, validating
   elements, attributes, and references before storage and publication. SVG support

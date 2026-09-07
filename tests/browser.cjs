@@ -16,6 +16,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
  fs.copyFileSync(path.join(__dirname,'../sitefren.php'),path.join(root,'sitefren.php'));
  const port=await new Promise(resolve=>{const server=net.createServer();server.listen(0,'127.0.0.1',()=>{const port=server.address().port;server.close(()=>resolve(port))})});
  const env={...process.env};for(const key of Object.keys(env))if(key.startsWith('POCKET_'))delete env[key];
+ if(process.env.POCKET_TEST_TRANSPORT!=='1')env.POCKET_UPDATE_CHECKS='0';
  const phpArgs=JSON.parse(process.env.PHP_ARGS_JSON||'[]');
  if(process.env.POCKET_TEST_TRANSPORT==='1')phpArgs.push('-d','disable_functions=curl_init,curl_setopt_array,curl_exec,curl_getinfo,curl_errno,curl_close','-d','auto_prepend_file='+path.join(__dirname,'curl-fixture.php'));
  const php=spawn(process.env.PHP_BIN||'php',[...phpArgs,'-S',`127.0.0.1:${port}`,'-t',root],{env,stdio:'ignore'});
@@ -31,6 +32,12 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   await page.locator('#setupCode').fill(code);await page.locator('#password').fill('browser-testing-passphrase');await page.locator('#authButton').click();
   await page.locator('#settingsDialog').waitFor({state:'visible'});await page.locator('#cancelSettings').click();
   check(await page.locator('#app').isVisible(),'Owner setup opens the editor');
+  check(await page.locator('#sponsorSpot').isVisible(),'The editor shows a labeled hosting advertisement');
+  check((await page.locator('#hostingHelpLink').getAttribute('href'))==='mailto:hello@raul.ws?subject=Sitefren%20hosting%20or%20setup%20help','Help opens an email without customer data');
+  if(process.env.POCKET_TEST_TRANSPORT==='1'){
+   await page.locator('#updateAvailable').waitFor({state:'visible'});
+   check((await page.locator('#updateAvailable').innerText()).includes('0.1.9'),'A newer published release shows an update notice');
+  }
   await page.locator('#demoBtn').click();
   const preview=page.frameLocator('#preview');await preview.locator('h1').waitFor({state:'visible'});
   check((await preview.locator('h1').innerText()).includes('room to'),'Sample renders inside the isolated frame');
@@ -54,6 +61,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   check(true,'History restores the earlier visual draft');
   await page.locator('#publishBtn').click();await page.locator('#acceptConfirm').click();await page.waitForFunction(()=>document.querySelector('#saveStatus').textContent==='Published');
   check(fs.readFileSync(path.join(root,'index.html'),'utf8')===original,'Publish writes the selected draft to the real filesystem');
+  check(!fs.readFileSync(path.join(root,'index.html'),'utf8').includes('sponsorSpot'),'The editor advertisement is not inserted into published pages');
   // Exercise local linked pages, CSS, classic JS, and network isolation.
   const edits=[
    {path:'style.css',content:'h1{color:rgb(12, 34, 56)}'},
@@ -153,7 +161,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   }
   await page.setViewportSize({width:390,height:844});await page.reload();await page.locator('#app').waitFor({state:'visible'});
   check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Mobile editor has no horizontal page overflow');
-  check(await page.getByText('Bringing power back to shared hosting.').isVisible(),'Requested tagline appears in the editor');
+  check(await page.locator('#sponsorSpot').isVisible(),'The hosting advertisement remains visible on mobile');
   await page.locator('#logoutBtn').click();await page.locator('#authForm').waitFor({state:'visible'});
   check(true,'Browser sign-out returns to the password screen');
   check(errors.length===0,'No uncaught browser JavaScript errors: '+errors.join('; '));

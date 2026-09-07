@@ -26,6 +26,7 @@ with tempfile.TemporaryDirectory(prefix='pocket-http-') as tmp:
         php_args += ['-d','disable_functions=curl_init,curl_setopt_array,curl_exec,curl_getinfo,curl_errno,curl_close','-d','auto_prepend_file='+str(ROOT/'tests/curl-fixture.php')]
     command = [os.environ.get('PHP_BIN', 'php'), *php_args, '-S', f'127.0.0.1:{port}', '-t', tmp]
     env = {k:v for k,v in os.environ.items() if not k.startswith('POCKET_')}
+    if not fixture: env['POCKET_UPDATE_CHECKS']='0'
     server = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
     jar = http.cookiejar.CookieJar()
     client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
@@ -77,12 +78,20 @@ with tempfile.TemporaryDirectory(prefix='pocket-http-') as tmp:
         check(request('setup',{'code':code,'password':'example-testing-passphrase'},token=False)[0]==403,'Reject setup without CSRF')
         check(request('setup',{'code':'wrong','password':'example-testing-passphrase'})[0]==401,'Reject a wrong ownership code')
         check(request('publish',{})[0]==401,'Reject publishing while signed out')
+        check(request('check_updates',{})[0]==401,'Update checks require authentication')
         status,state=request('setup',{'code':code,'password':'example-testing-passphrase'})
         check(status==200 and state['authenticated'] and not state['setup'],'Owner can finish setup and sign in')
         check('Setup code:' not in (root/'builder-state.php').read_text(),'Setup clears the ownership token')
         check(any(c.has_nonstandard_attr('HttpOnly') for c in jar),'Editor cookie is HTTP-only')
         check(request('demo',{},token=False)[0]==403,'Reject authenticated mutations without CSRF')
         check(request('demo',verb='GET')[0]==405,'GET cannot mutate the project')
+        check(request('check_updates',{},token=False)[0]==403,'Update checks require CSRF')
+        update_status,update=request('check_updates',{})
+        check(update_status==200 and update['status']==('checked' if fixture else 'disabled'),'Update checks respect host settings and parse fixture releases')
+        if fixture:
+            check(update['available'] and update['version']=='0.1.9' and update['url']=='https://github.com/raldjr/sitefren/releases','New alpha releases return a fixed official download link')
+            cached=(root/'builder-state.php').read_bytes()
+            check(request('check_updates',{'force':True})[1]==update and (root/'builder-state.php').read_bytes()==cached,'Repeated and forced checks within a minute reuse cached data')
         status,state=request('demo',{})
         check(status==200 and 'index.html' in state['files'],'Sample-site endpoint creates an editable draft')
         check(request('demo',{})[0]==409,'Sample cannot replace an existing draft')

@@ -20,7 +20,8 @@ upload and readable code without customer-managed workers or build tools.
 ## Explore later
 
 - Optional forms and carefully scoped PHP/database applications.
-- Update distribution and portable project export.
+- Signed in-place updates (release notifications and manual downloads are available).
+- Portable project export.
 
 These are not currently supported features. Open an issue to discuss a proposal
 before implementing a major change.
