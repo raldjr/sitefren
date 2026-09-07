@@ -43,6 +43,7 @@ jobs:
           export PLAYWRIGHT_MODULE="$RUNNER_TEMP/browser-tests/node_modules/playwright"
           POCKET_TEST_TRANSPORT=1 node tests/browser.cjs
           node tests/rich-text.cjs
+          node tests/mobile-pwa.cjs
       - name: Publish the verified single-file download
         env:
           GH_TOKEN: ${{ github.token }}

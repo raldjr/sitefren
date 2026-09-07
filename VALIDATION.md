@@ -1,3 +1,30 @@
+# Alpha 0.2.3 release validation
+
+Checked on September 7, 2026, with PHP and Chromium via Playwright.
+
+- PHP syntax, 125 core, 79 installation, 47 update-notice, 41 installer,
+  91 HTTP, 68 browser, 37 direct-editing and 28 mobile/PWA checks passed,
+  together with embedded JavaScript/image-drop checks. Provider and installer
+  regressions use synthetic fixtures, without live AI billing.
+- Mobile checks cover Website/Chat switching, preservation of an unsent prompt,
+  focused editing, larger touch targets and no horizontal overflow. Phone
+  screenshots were inspected; direct-editing tests also cover short landscape.
+- Chromium parses the app manifest and reports no installability errors. PNG
+  icon dimensions, renamed editors in subfolders, app identity and the exact
+  editor service-worker scope are checked. Public PWA requests create no
+  private state or session, reject POST, and reject unknown resource names.
+- Offline tests verify that open pages show a notice, API requests fail rather
+  than using cached state, offline navigation shows only a reconnect screen,
+  and reconnection restores authenticated access to the server draft. Cache
+  Storage remains empty and published pages have no editor worker controller.
+- A replaced PHP file loads on the next online navigation without a stale app
+  shell. That test disables PHP opcode caching to isolate worker behavior;
+  signed-installer tests separately cover replacement and OPcache invalidation.
+- The manifest, icons and worker are embedded in one uploadable PHP file.
+  Editing/publishing require internet. There is no offline editing or queued
+  save support. Physical iOS/Android home-screen installation, real mobile
+  keyboards and production shared-host upgrades were not exercised here.
+
 # Alpha 0.2.2 release validation
 
 Checked on September 7, 2026, with PHP and Chromium via Playwright.

@@ -16,6 +16,10 @@ One-click updates require PHP cURL, Sodium and Tokenizer, and writable editor an
 parent directory permissions. No shell access, Composer, database, worker or
 second customer upload is needed. There is no unattended installation.
 
+Installed home-screen apps use this same update flow. The service worker does
+not cache the editor or private API responses, so a completed replacement loads
+on the next online page load. Offline launches show only a reconnect screen.
+
 ## Discovery and privacy
 
 After owner sign-in, PHP checks the fixed public GitHub releases feed for

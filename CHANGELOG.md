@@ -1,5 +1,16 @@
 # Changes
 
+## 0.2.3 — September 7, 2026
+
+- Add separate Website and Chat views on phones, preserving unsent prompts.
+  Focus direct editing on the page with larger touch targets, keyboard-aware
+  floating controls and safe-area spacing.
+- Add home-screen PWA installation with standalone display and embedded icons.
+  Serve the manifest and narrowly scoped worker from the single PHP file.
+- Show a reconnect screen on offline launch and an offline notice while open.
+  Keep editing, publishing and signed upgrades online without caching private
+  editor or API responses. Published websites remain outside worker control.
+
 ## 0.2.2 — September 7, 2026
 
 - Rename Edit text to Edit and replace the separate formatting section with a

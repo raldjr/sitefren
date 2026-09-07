@@ -7,7 +7,7 @@ Built by **Raul Aldrete Jr.** for [Sheepdog Host](https://sheepdoghost.com).
 Upload one PHP file. Describe your website. Preview it. Publish real HTML, CSS,
 and JavaScript on the hosting account you already own.
 
-Sitefren is an **Alpha 0.2.2** application for small static websites, licensed under AGPL-3.0-only.
+Sitefren is an **Alpha 0.2.3** application for small static websites, licensed under AGPL-3.0-only.
 
 **One file to upload is a project requirement.** The customer uploads
 `sitefren.php`; the editor creates its own private state and published site files.
@@ -152,6 +152,33 @@ during generation or direct text editing. Files in a drop upload one at a time;
 if an upload fails, earlier successful uploads remain and later files are not sent.
 Check Images before retrying. Adding an image does not make an AI request; ask the
 AI how to use it, review the draft, and Publish when ready.
+
+## Mobile workspace and home-screen app
+
+On phones, use **Website** and **Chat with AI** to switch views without losing
+an unsent prompt. A completed generation opens Website. During direct editing,
+inactive navigation collapses and Save/Cancel stay above the preview. Touch
+controls are larger, form text avoids automatic zoom, and floating panels adjust
+to the visible viewport when the keyboard opens.
+
+Use **Settings → Install Sitefren app** to open the browser's install prompt when
+supported. On iPhone/iPad, open the editor in Safari and use **Share → Add to Home
+Screen**. Other browsers may offer Install app or Add to Home screen in their
+menu. HTTPS is required on your hosting account; localhost works for development.
+The app manifest, home-screen icons and service worker are served by the same
+PHP file, including when it is renamed or installed in a subfolder.
+
+The installed app uses the same server sign-in and signed updates. Editing,
+AI generation, saving and publishing require an internet connection. If a page
+is already open when connectivity drops, keep it open and reconnect before
+saving. Offline launches show a reconnect screen. There is no offline editing,
+background save queue, or local copy of private state. The worker caches no
+editor/API responses and controls only the editor path, leaving published pages
+independent. Replacing the PHP editor is reflected on the next online launch.
+
+Browser installation behavior varies. Chromium installability and offline
+behavior are tested; physical iPhone/iPad installation should also be checked
+on the target device.
 
 ## Edit text and images on the page
 
