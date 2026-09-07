@@ -1,3 +1,27 @@
+# Alpha 0.2.2 release validation
+
+Checked on September 7, 2026, with PHP and Chromium via Playwright.
+
+- PHP syntax, 125 core, 79 installation, 47 update-notice, 41 installer,
+  91 HTTP, 68 browser and 37 direct-editing checks passed, together with embedded
+  JavaScript/image-drop checks. Provider and installer tests use synthetic fixtures.
+- Direct editing covers floating text controls, links, emphasis and headings;
+  image upload/replacement, alt text, width/height/fit, cancellation, removal,
+  image-only nested pages, relative asset paths, combined text/image saves,
+  preserved inline styles, and publication of the edited page and SVG asset.
+- Desktop, mobile and short landscape layouts were checked. Floating controls
+  stay within the preview, scroll on short screens, and can be dismissed with
+  Escape or Close. Save/Cancel remain reachable above the preview.
+- Fixed inert-document style parsing when reading and updating image settings.
+  Source reconstruction retains unrelated inline styles and original scripts;
+  replacement removes stale picture sources and excludes preview-only helpers.
+- Direct image editing supports HTML image elements. CSS background images and
+  inline SVG artwork still use Files or AI. Uploads remain in the asset library
+  when page edits are canceled. Live AI calls and production shared-host updates
+  were not run; the existing updater compatibility/recovery limits still apply.
+- Public verification allows time for the tag's test/publish job to finish when
+  main and the version tag are pushed together, while retaining a bounded wait.
+
 # Alpha 0.2.1 release validation
 
 Checked on September 7, 2026, with PHP and Chromium via Playwright.

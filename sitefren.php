@@ -1,6 +1,6 @@
 <?php
 /**
- * Sitefren 0.2.1 — an uploadable AI editor for small static websites.
+ * Sitefren 0.2.2 — an uploadable AI editor for small static websites.
  * SPDX-License-Identifier: AGPL-3.0-only
  * Copyright (c) 2026 Raul Aldrete Jr. and contributors
  * Built by Raul Aldrete Jr. for Sheepdog Host.
@@ -692,7 +692,7 @@
  */
 declare(strict_types=1);
 
-const PS_VERSION = '0.2.1';
+const PS_VERSION = '0.2.2';
 const PS_UPDATE_PUBLIC_KEY = 'TthJkmF58DxCfaw/0N6iRLhORlImuMT3brLGxKJV7jM=';
 // Optional embedded sponsor artwork (data:image/...;base64,...) preserves one-file delivery.
 const PS_SPONSOR_IMAGE = '';
@@ -8499,26 +8499,25 @@ try {
           transition: none !important;
         }
       }
-      .text-toolbar { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 5px; }
-      .text-toolbar select { width: auto; min-width: 130px; }
-      #textEditHint { flex-basis: 100%; font-size: 12px; }
+      .floating-editor {
+        position: fixed; z-index: 100; max-width: calc(100vw - 16px);
+        padding: 6px 32px 6px 6px; background: white; color: #242424;
+        border: 1px solid #e5e5e5; border-radius: 10px;
+        box-shadow: 0 8px 30px #0002;
+      }
+      .floating-editor .floating-close { position: absolute; right: 3px; top: 3px; padding: 0; width: 26px; min-height: 26px; background: white; }
+      .text-toolbar { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; max-width: 470px; }
+      .text-toolbar select { width: auto; min-width: 105px; }
+      .floating-editor button, .floating-editor select { min-height: 34px; padding: 6px 8px; font-size: 12px; border-radius: 5px; }
       .text-toolbar button[aria-pressed="true"] { background: var(--brand); color: white; }
-      .visual-bar {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-        flex-wrap: wrap;
-        padding: 12px;
-        background: #fff7ed;
-        border: 1px solid #fed7aa;
-        border-radius: 12px;
-        margin-bottom: 12px;
-      }
-      .visual-bar span {
-        flex: 1;
-        min-width: 150px;
-        font-size: 13px;
-      }
+      .image-toolbar { display: grid; gap: 8px; width: 270px; padding: 6px; }
+      .image-toolbar label { display: grid; gap: 3px; font-size: 12px; }
+      .image-toolbar input, .image-toolbar select { width: 100%; margin: 0; padding: 7px; }
+      .image-size-controls { display: flex; gap: 8px; }
+      .image-size-controls label { flex: 1; min-width: 0; }
+      .visual-bar { display: flex; flex-shrink: 0; gap: 8px; align-items: center; padding: 0 0 10px; }
+      .visual-bar span { flex: 1; font-size: 12px; color: var(--muted); }
+      .visual-bar button { padding: 7px 12px; font-size: 12px; }
       .canvas:has(.visual-bar:not([hidden])) {
         display: flex;
         flex-direction: column;
@@ -8557,6 +8556,7 @@ try {
       .canvas {
         display: flex;
         flex-direction: column;
+        justify-content: flex-start;
         gap: 12px;
       }
       .canvas .preview-shell {
@@ -8759,17 +8759,22 @@ try {
         <div id="previewPanel" class="canvas">
           <div id="previewActions" class="preview-actions" hidden>
             <div>
-              <button id="editPageBtn" type="button">Edit text</button
+              <button id="editPageBtn" type="button">Edit</button
               ><button id="selectElementBtn" type="button" aria-pressed="false">
                 Select for AI
               </button>
             </div>
             <span id="previewHint"
-              >Edit wording yourself, or select something to change with AI.</span
+              >Edit text and images, or select something to change with AI.</span
             >
           </div>
           <div id="visualBar" class="visual-bar" hidden>
-            <span id="textEditHint">Click text to edit. Heading levels describe page structure.</span>
+            <span id="textEditHint">Click text or an image to edit.</span>
+            <button id="saveVisualBtn" class="primary">Save changes</button>
+            <button id="cancelVisualBtn">Cancel</button>
+          </div>
+          <div id="floatingEditor" class="floating-editor" hidden>
+            <button id="closeFloatingEditor" type="button" aria-label="Close editing controls" class="floating-close">×</button>
             <div id="textToolbar" class="text-toolbar" role="toolbar" aria-label="Text formatting">
               <select id="textHeading" aria-label="Text style" disabled>
                 <option value="">Text style</option><option value="P">Paragraph</option>
@@ -8784,8 +8789,18 @@ try {
               <button type="button" data-text-command="unlink" disabled>Unlink</button>
               <button type="button" data-text-command="clear" disabled>Clear formatting</button>
             </div>
-            <button id="saveVisualBtn" class="primary">Save text</button>
-            <button id="cancelVisualBtn">Cancel</button>
+            <div id="imageToolbar" class="image-toolbar" role="group" aria-label="Image editing" hidden>
+              <strong>Image</strong>
+              <label>Replace with<select id="imageAsset"><option value="">Choose an uploaded image</option></select></label>
+              <button id="replaceImageUpload" type="button">Upload replacement</button>
+              <label>Alt text<input id="editImageAlt" type="text" maxlength="500" placeholder="Describe the image" /></label>
+              <div class="image-size-controls">
+                <label>Width (%)<input id="editImageWidth" type="number" min="1" max="100" placeholder="Auto" /></label>
+                <label>Height (px)<input id="editImageHeight" type="number" min="1" max="4000" placeholder="Auto" /></label>
+              </div>
+              <label>Fit<select id="editImageFit"><option value="">Original</option><option value="cover">Cover</option><option value="contain">Contain</option><option value="fill">Stretch</option></select></label>
+              <button id="removeVisualImage" type="button">Remove image</button>
+            </div>
           </div>
           <div class="preview-shell" id="previewShell">
             <div class="browser-bar" aria-hidden="true">
@@ -8934,6 +8949,7 @@ try {
         ><button id="acceptConfirm" class="primary">Continue</button>
       </div>
     </dialog>
+    <input type="file" id="visualImageInput" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg" hidden />
     <input type="file" id="imageInput" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg" hidden />
     <div id="toast" class="toast" role="status" hidden></div>
     <script id="textEngine" type="application/octet-stream"><?= base64_encode(ps_text_engine()) ?></script>
@@ -9371,7 +9387,7 @@ try {
         byId('previewAddress').textContent = exists
           ? currentPage +
             (visual
-              ? ' · Editing text'
+              ? ' · Editing'
               : selectionMode
                 ? ' · Select an element'
                 : ' · Draft preview')
@@ -9543,7 +9559,7 @@ try {
         byId('selectElementBtn').setAttribute('aria-pressed', String(!!selectionMode));
         byId('previewHint').textContent = selectionMode
           ? 'Click an element. Use Select parent for its card or section, then describe your change.'
-          : 'Edit wording yourself, or select something to change with AI.';
+          : 'Edit text and images, or select something to change with AI.';
         byId('selectParentBtn').disabled =
           !selectedElement ||
           selectedElement.node.parentElement === selectedElement.document.body ||
@@ -9700,6 +9716,10 @@ try {
         }
         return { safeLink, clean };
       }
+      function editableImages(doc) {
+        return [...doc.body.querySelectorAll('img')].filter((img) =>
+          !img.closest('iframe,object,embed,template,noscript,[hidden]'));
+      }
       function prepareVisualPreview(doc) {
         const nodes = editableTextNodes(doc);
         doc.querySelectorAll('script').forEach((node) => node.remove());
@@ -9718,8 +9738,9 @@ try {
             child.dataset.pocketOrigin = String(position);
           });
         });
+        editableImages(doc).forEach((img, index) => { img.dataset.pocketImage = String(index); img.tabIndex = 0; });
         const style = doc.createElement('style');
-        style.textContent = '[data-pocket-text]{display:block;outline:none}[data-pocket-text]>:first-child{cursor:text;outline:1px dashed #c2410c;outline-offset:3px}[data-pocket-text]:focus-within>:first-child{outline:2px solid #c2410c}';
+        style.textContent = 'img[data-pocket-image]{cursor:pointer}img[data-pocket-image-selected]{outline:3px solid #c2410c;outline-offset:3px}[data-pocket-text]{display:block;outline:none}[data-pocket-text]>:first-child{cursor:text;outline:1px dashed #c2410c;outline-offset:3px}[data-pocket-text]:focus-within>:first-child{outline:2px solid #c2410c}';
         doc.head.append(style);
       }
       function visualBridge(token, makeTools) {
@@ -9727,11 +9748,27 @@ try {
         const items = [...document.querySelectorAll('[data-pocket-text]')];
         const editors = new Map();
         let active = null;
+        let activeImage = null;
+        const images = [...document.querySelectorAll('[data-pocket-image]')];
         let savedRange = null;
         const values = () => items.map((el) => ({ index: Number(el.dataset.pocketText),
           html: editors.has(el) && editors.get(el).editor.getHTML() !== editors.get(el).initial ? editors.get(el).editor.getHTML() : null }));
         function report() { parent.postMessage({ type: 'pocket-text-change', token, values: values() }, '*'); }
+        function anchorRect(node) {
+          const rect = node.getBoundingClientRect();
+          return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
+            viewportWidth: innerWidth, viewportHeight: innerHeight };
+        }
+        function imageSelection(img) {
+          active = null;
+          if (activeImage) activeImage.removeAttribute('data-pocket-image-selected');
+          activeImage = img;
+          img.setAttribute('data-pocket-image-selected', '');
+          parent.postMessage({ type: 'pocket-image-selection', token,
+            index: images.indexOf(img), rect: anchorRect(img) }, '*');
+        }
         function toolbar() {
+          if (activeImage) { imageSelection(activeImage); return; }
           if (!active) return;
           const editor = editors.get(active).editor;
           savedRange = editor.getSelection().cloneRange();
@@ -9739,12 +9776,15 @@ try {
           const node = selection.nodeType === 1 ? selection : selection.parentElement;
           const link = node.closest('a');
           parent.postMessage({ type: 'pocket-text-selection', token,
+            rect: anchorRect(savedRange.getBoundingClientRect().width ? savedRange : active),
             heading: /^(P|H[1-6])$/.test(active.dataset.pocketTag) ? active.firstElementChild?.tagName : '',
             bold: editor.hasFormat('B'), italic: editor.hasFormat('I'), underline: editor.hasFormat('U'),
             href: link?.getAttribute('href') || '', canLink: !['A', 'BUTTON', 'LABEL'].includes(active.dataset.pocketTag),
           }, '*');
         }
         function start(el) {
+          if (activeImage) activeImage.removeAttribute('data-pocket-image-selected');
+          activeImage = null;
           if (active === el) return;
           active = el;
           if (!editors.has(el)) {
@@ -9778,10 +9818,20 @@ try {
           if (event.target.closest('a,button,input')) event.preventDefault();
         }, true);
         document.addEventListener('pointerdown', (event) => {
+          const img = event.target.closest('[data-pocket-image]');
+          if (img) { event.preventDefault(); img.focus(); imageSelection(img); return; }
           const el = event.target.closest('[data-pocket-text]');
+          if (!el) {
+            if (activeImage) activeImage.removeAttribute('data-pocket-image-selected');
+            activeImage = null; active = null;
+            parent.postMessage({ type: 'pocket-editor-dismiss', token }, '*');
+          }
           if (el && !editors.has(el)) { event.preventDefault(); start(el); }
           else if (el) start(el);
         }, true);
+        images.forEach((img) => img.addEventListener('focus', () => imageSelection(img)));
+        addEventListener('scroll', toolbar, true);
+        addEventListener('resize', toolbar);
         items.forEach((el) => { el.tabIndex = 0; el.addEventListener('focus', () => start(el)); });
         document.addEventListener('submit', (event) => event.preventDefault(), true);
         document.addEventListener('drop', (event) => event.preventDefault(), true);
@@ -9790,6 +9840,11 @@ try {
           if (active) editors.get(active).editor.insertPlainText(event.clipboardData.getData('text/plain').replace(/[\r\n]+/g, ' '));
         }, true);
         document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') {
+            if (activeImage) activeImage.removeAttribute('data-pocket-image-selected');
+            activeImage = null; active = null;
+            parent.postMessage({ type: 'pocket-editor-dismiss', token }, '*');
+          }
           if (event.key === 'Enter' || event.key === 'Tab') {
             if (event.key === 'Enter') event.preventDefault();
             event.stopImmediatePropagation();
@@ -9797,6 +9852,26 @@ try {
         }, true);
         addEventListener('message', (event) => {
           if (event.source !== parent || event.data?.token !== token) return;
+          if (event.data.type === 'pocket-editor-close') {
+            if (activeImage) activeImage.removeAttribute('data-pocket-image-selected');
+            activeImage = null; active = null; return;
+          }
+          if (event.data.type === 'pocket-image-command') {
+            const img = images[event.data.index];
+            if (!img) return;
+            const change = event.data.change;
+            if (change.remove) { img.hidden = true; activeImage = null; return; }
+            if (typeof change.src === 'string') {
+              img.src = change.src; img.removeAttribute('srcset');
+              img.closest('picture')?.querySelectorAll('source').forEach((source) => source.remove());
+            }
+            if (typeof change.alt === 'string') img.alt = change.alt;
+            if (change.width !== undefined) img.style.width = change.width ? change.width + '%' : '';
+            if (change.height !== undefined) img.style.height = change.height ? change.height + 'px' : 'auto';
+            if (change.fit !== undefined) img.style.objectFit = change.fit;
+            requestAnimationFrame(() => imageSelection(img));
+            return;
+          }
           if (event.data.type === 'pocket-text-collect') {
             parent.postMessage({ type: 'pocket-text-save', token, values: values() }, '*'); return;
           }
@@ -9828,6 +9903,157 @@ try {
           toolbar();
         });
       }
+      let floatingAnchor = null;
+      function closeFloatingEditor() {
+        byId('floatingEditor').hidden = true; floatingAnchor = null;
+        if (visual) {
+          visual.imageIndex = null;
+          byId('preview').contentWindow.postMessage({ type: 'pocket-editor-close', token: visual.token }, '*');
+        }
+      }
+      byId('closeFloatingEditor').addEventListener('click', closeFloatingEditor);
+      addEventListener('keydown', (event) => { if (event.key === 'Escape') closeFloatingEditor(); });
+      function positionFloatingEditor() {
+        if (!visual || !floatingAnchor) return;
+        const panel = byId('floatingEditor');
+        const frame = byId('preview').getBoundingClientRect();
+        const rect = floatingAnchor;
+        const scaleX = frame.width / rect.viewportWidth;
+        const scaleY = frame.height / rect.viewportHeight;
+        const top = frame.top + rect.top * scaleY;
+        const bottom = frame.top + rect.bottom * scaleY;
+        const left = frame.left + rect.left * scaleX;
+        if (bottom < Math.max(0, frame.top) || top > Math.min(innerHeight, frame.bottom)) {
+          panel.hidden = true; return;
+        }
+        const minTop = Math.max(8, frame.top + 4);
+        const maxBottom = Math.min(innerHeight - 8, frame.bottom - 4);
+        if (maxBottom - minTop < 40) { panel.hidden = true; return; }
+        panel.hidden = false;
+        panel.style.maxHeight = (maxBottom - minTop) + 'px';
+        panel.style.overflowY = 'auto';
+        const x = Math.max(8, Math.min(left, innerWidth - panel.offsetWidth - 8));
+        let y = top - panel.offsetHeight - 10;
+        if (y < minTop) y = bottom + 10;
+        y = Math.min(y, maxBottom - panel.offsetHeight);
+        panel.style.left = x + 'px';
+        panel.style.top = Math.max(minTop, y) + 'px';
+      }
+      function showFloatingEditor(kind, rect) {
+        if (!rect || !['left', 'right', 'top', 'bottom', 'viewportWidth', 'viewportHeight'].every((key) => Number.isFinite(rect[key])) ||
+            rect.viewportWidth <= 0 || rect.viewportHeight <= 0) return;
+        floatingAnchor = rect;
+        byId('textToolbar').hidden = kind !== 'text';
+        byId('imageToolbar').hidden = kind !== 'image';
+        positionFloatingEditor();
+      }
+      addEventListener('scroll', () => {
+        if (visual && !visual.saving) positionFloatingEditor();
+      }, true);
+      addEventListener('resize', positionFloatingEditor);
+      function imageInlineStyle(img) {
+        const style = document.createElement('span').style;
+        style.cssText = img.getAttribute('style') || '';
+        return style;
+      }
+      function imageOptions() {
+        const select = byId('imageAsset');
+        select.replaceChildren(textElement('option', 'Choose an uploaded image'));
+        select.firstElementChild.value = '';
+        for (const path of Object.keys(state.assets)) {
+          const option = textElement('option', path);
+          option.value = path; select.append(option);
+        }
+      }
+      function imageChange(change) {
+        if (!visual || visual.saving || visual.imageIndex === null) return;
+        const index = visual.imageIndex;
+        visual.imageChanges.set(index, { ...visual.imageChanges.get(index), ...change });
+        const previewChange = { ...change };
+        if (change.src !== undefined) previewChange.src = imageURL(change.src, visual.path);
+        byId('preview').contentWindow.postMessage({ type: 'pocket-image-command', token: visual.token,
+          index, change: previewChange }, '*');
+      }
+      function replaceVisualImage(path) {
+        if (!visual || !state.assets[path]) return;
+        const folders = visual.path.split('/').slice(0, -1);
+        const parts = path.split('/');
+        while (folders.length && folders[0] === parts[0]) { folders.shift(); parts.shift(); }
+        imageChange({ src: '../'.repeat(folders.length) + parts.join('/') });
+      }
+      byId('imageAsset').addEventListener('change', (event) => replaceVisualImage(event.target.value));
+      byId('editImageAlt').addEventListener('input', (event) => imageChange({ alt: event.target.value }));
+      byId('editImageWidth').addEventListener('input', (event) => {
+        const value = event.target.value;
+        if (value !== '' && (!Number.isFinite(Number(value)) || Number(value) < 1 || Number(value) > 100)) return;
+        imageChange({ width: value === '' ? '' : Number(value) });
+      });
+      byId('editImageHeight').addEventListener('input', (event) => {
+        const value = event.target.value;
+        if (value !== '' && (!Number.isFinite(Number(value)) || Number(value) < 1 || Number(value) > 4000)) return;
+        imageChange({ height: value === '' ? '' : Number(value) });
+      });
+      byId('editImageFit').addEventListener('change', (event) => imageChange({ fit: event.target.value }));
+      byId('removeVisualImage').addEventListener('click', () => {
+        imageChange({ remove: true });
+        byId('floatingEditor').hidden = true; floatingAnchor = null;
+        visual.imageIndex = null;
+      });
+      byId('replaceImageUpload').addEventListener('click', () => byId('visualImageInput').click());
+      byId('visualImageInput').addEventListener('change', async (event) => {
+        const file = event.target.files[0]; event.target.value = '';
+        if (!file || !visual || visual.saving || visual.uploading) return;
+        if (file.size > 2000000) { notice('Choose an image under 2 MB.', true); return; }
+        const editing = visual;
+        const index = visual.imageIndex;
+        editing.uploading = true;
+        byId('saveVisualBtn').disabled = true;
+        byId('cancelVisualBtn').disabled = true;
+        byId('imageToolbar').querySelectorAll('button,input,select').forEach((el) => el.disabled = true);
+        try {
+          const data = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = () => reject(Error('Could not read that image.'));
+            reader.readAsDataURL(file);
+          });
+          const next = await api('upload', { data });
+          state = next;
+          if (visual !== editing) return;
+          const path = Object.keys(state.assets).find((path) => state.assets[path].data === data);
+          if (!path) throw Error('The uploaded image could not be found.');
+          visual.imageIndex = index;
+          replaceVisualImage(path); imageOptions(); byId('imageAsset').value = path;
+        } catch (error) { notice(error.message, true); }
+        finally {
+          editing.uploading = false;
+          if (visual === editing) {
+            byId('saveVisualBtn').disabled = false; byId('cancelVisualBtn').disabled = false;
+            byId('imageToolbar').querySelectorAll('button,input,select').forEach((el) => el.disabled = false);
+          }
+        }
+      });
+      window.addEventListener('message', (event) => {
+        if (!visual || visual.saving || visual.uploading || event.source !== byId('preview').contentWindow || event.data?.token !== visual.token) return;
+        const data = event.data;
+        if (data.type === 'pocket-editor-dismiss') {
+          byId('floatingEditor').hidden = true; floatingAnchor = null; visual.imageIndex = null; return;
+        }
+        if (data.type !== 'pocket-image-selection' || !Number.isInteger(data.index) || !visual.images[data.index] || visual.imageChanges.get(data.index)?.remove) return;
+        if (visual.imageIndex !== data.index) {
+          visual.imageIndex = data.index;
+          const img = visual.images[data.index];
+          const change = visual.imageChanges.get(data.index) || {};
+          const style = imageInlineStyle(img);
+          imageOptions();
+          byId('imageAsset').value = resolvePath(change.src ?? img.getAttribute('src'), visual.path) || '';
+          byId('editImageAlt').value = change.alt ?? img.getAttribute('alt') ?? '';
+          byId('editImageWidth').value = change.width ?? (style.width.endsWith('%') ? parseFloat(style.width) : '');
+          byId('editImageHeight').value = change.height ?? (style.height.endsWith('px') ? parseFloat(style.height) : img.getAttribute('height') || '');
+          byId('editImageFit').value = change.fit ?? style.objectFit;
+        }
+        showFloatingEditor('image', data.rect);
+      });
       let currentTextLink = '';
       function sendTextCommand(command, value = null) {
         if (!visual || visual.saving) return;
@@ -9855,6 +10081,8 @@ try {
         if (!visual || visual.saving || event.source !== byId('preview').contentWindow ||
             event.data?.token !== visual.token || event.data.type !== 'pocket-text-selection') return;
         const data = event.data;
+        visual.imageIndex = null;
+        showFloatingEditor('text', data.rect);
         currentTextLink = typeof data.href === 'string' ? data.href : '';
         byId('textToolbar').querySelectorAll('button').forEach((button) => button.disabled = false);
         byId('textHeading').disabled = !/^(P|H[1-6])$/.test(data.heading);
@@ -9868,6 +10096,10 @@ try {
           .querySelectorAll('#app button,#topActions button,#pageSelect,#prompt,#imageInput')
           .forEach((el) => (el.disabled = active));
         byId('textToolbar').querySelectorAll('button,select').forEach((el) => el.disabled = true);
+        byId('imageToolbar').querySelectorAll('button,input,select').forEach((el) => el.disabled = false);
+        byId('floatingEditor').hidden = true;
+        byId('closeFloatingEditor').disabled = false;
+        floatingAnchor = null;
         for (const id of ['saveVisualBtn', 'cancelVisualBtn', 'diagnosticsBtn'])
           byId(id).disabled = false;
         byId('visualBar').hidden = !active;
@@ -9891,9 +10123,9 @@ try {
         resetSelection();
         const doc = new DOMParser().parseFromString(state.files[currentPage], 'text/html'),
           nodes = editableTextNodes(doc);
-        if (!nodes.length || nodes.length > 3000) {
+        if ((!nodes.length && !editableImages(doc).length) || nodes.length > 3000) {
           notice(
-            'This page has no supported text to edit, or is too large for direct editing. Use Files.',
+            'This page has no supported text or images, or is too large for direct editing. Use Files.',
             true,
           );
           return;
@@ -9903,6 +10135,10 @@ try {
           doc,
           nodes,
           changes: new Map(),
+          images: editableImages(doc),
+          imageChanges: new Map(),
+          imageIndex: null,
+          uploading: false,
           token: crypto.randomUUID(),
           saving: false,
         };
@@ -9912,10 +10148,10 @@ try {
       byId('cancelVisualBtn').addEventListener('click', async () => {
         if (
           visual &&
-          !visual.saving &&
-          (!visual.changes.size ||
+          !visual.saving && !visual.uploading &&
+          ((!visual.changes.size && !visual.imageChanges.size) ||
             (await confirmAction(
-              'Discard text edits?',
+              'Discard edits?',
               'Your saved draft will stay as it is.',
               'Discard',
             )))
@@ -9923,8 +10159,9 @@ try {
           endVisual();
       });
       byId('saveVisualBtn').addEventListener('click', () => {
-        if (!visual || visual.saving) return;
+        if (!visual || visual.saving || visual.uploading) return;
         visual.saving = true;
+        byId('floatingEditor').hidden = true;
         byId('saveVisualBtn').disabled = true;
         byId('cancelVisualBtn').disabled = true;
         byId('preview').contentWindow.postMessage(
@@ -9937,7 +10174,7 @@ try {
             byId('saveVisualBtn').disabled = false;
             byId('cancelVisualBtn').disabled = false;
             notice(
-              'Could not read the edited page. Your changes are still open; try Save text again.',
+              'Could not read the edited page. Your changes are still open; try Save changes again.',
               true,
             );
           }
@@ -9965,9 +10202,9 @@ try {
         visual.changes = changes;
         if (e.data.type !== 'pocket-text-save' || !visual.saving) return;
         clearTimeout(visualCollectTimer);
-        if (!changes.size) {
+        if (!changes.size && !visual.imageChanges.size) {
           endVisual();
-          notice('No text changes to save.');
+          notice('No changes to save.');
           return;
         }
         // Rebuild from the original source DOM, never from rewritten preview HTML.
@@ -10015,11 +10252,29 @@ try {
           replacement.querySelectorAll('[data-pocket-origin]').forEach((el) => el.removeAttribute('data-pocket-origin'));
           original.replaceWith(replacement);
         }
+        const imageNodes = editableImages(clean);
+        for (const [index, change] of visual.imageChanges) {
+          const img = imageNodes[index];
+          if (!img) continue;
+          if (change.remove) { img.remove(); continue; }
+          if (change.src !== undefined) {
+            img.setAttribute('src', change.src); img.removeAttribute('srcset');
+            img.closest('picture')?.querySelectorAll('source').forEach((source) => source.remove());
+          }
+          if (change.alt !== undefined) img.setAttribute('alt', change.alt);
+          if (change.width !== undefined || change.height !== undefined || change.fit !== undefined) {
+            const style = imageInlineStyle(img);
+            if (change.width !== undefined) style.width = change.width ? change.width + '%' : '';
+            if (change.height !== undefined) style.height = change.height ? change.height + 'px' : 'auto';
+            if (change.fit !== undefined) style.objectFit = change.fit;
+            img.setAttribute('style', style.cssText);
+          }
+        }
         const content = '<!doctype html>\n' + clean.documentElement.outerHTML;
         try {
           state = await api('save_file', { path: visual.path, content });
           endVisual();
-          notice('Text saved to your draft. Publish when ready.');
+          notice('Changes saved to your draft. Publish when ready.');
         } catch (error) {
           visual.saving = false;
           byId('saveVisualBtn').disabled = false;
@@ -10473,7 +10728,7 @@ try {
         }, 3000);
       }
       window.addEventListener('beforeunload', (e) => {
-        if (dirtyCode || (visual && visual.changes.size)) {
+        if (dirtyCode || (visual && (visual.changes.size || visual.imageChanges.size || visual.uploading))) {
           e.preventDefault();
           e.returnValue = '';
         }

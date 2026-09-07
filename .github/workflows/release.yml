@@ -58,18 +58,18 @@ jobs:
     needs: publish
     if: ${{ !cancelled() && (needs.publish.result == 'success' || needs.publish.result == 'skipped') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
       - name: Verify public update discovery and signed download
         run: |
-          for attempt in 1 2 3 4 5 6; do
+          for attempt in {1..18}; do
             if php scripts/verify-published-release.php; then
               exit 0
             fi
-            if [ "$attempt" -lt 6 ]; then
+            if [ "$attempt" -lt 18 ]; then
               echo "Waiting for the public release feed and assets to propagate (attempt $attempt)."
               sleep 20
             fi

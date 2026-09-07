@@ -58,8 +58,8 @@ function reset_install(): array {
     $_SESSION = ['auth' => $state['auth_version'], 'seen' => time(), 'csrf' => 'synthetic'];
     file_put_contents(POCKET_ROOT . '/index.html', '<h1>Keep my published site</h1>');
     signed_assets(PS_VERSION, $source);
-    signed_assets('0.2.2', str_replace("const PS_VERSION = '" . PS_VERSION . "';", "const PS_VERSION = '0.2.2';", $source));
-    return ['version' => '0.2.2', 'revision' => $state['revision']];
+    signed_assets('0.2.3', str_replace("const PS_VERSION = '" . PS_VERSION . "';", "const PS_VERSION = '0.2.3';", $source));
+    return ['version' => '0.2.3', 'revision' => $state['revision']];
 }
 function rejected(array $input, string $message): void {
     $before = file_get_contents($GLOBALS['editor']);
@@ -78,13 +78,13 @@ try {
     $input = reset_install(); putenv('POCKET_UPDATE_CHECKS=0'); rejected($input, 'Hosting opt-out'); putenv('POCKET_UPDATE_CHECKS');
     $input = reset_install(); $state = ps_load(); $state['pending'] = ['expires' => time() + 60]; ps_save($state); rejected($input, 'Active generation');
     $input = reset_install(); $state = ps_load(); $state['update_pending'] = ['id' => 'other', 'expires' => time() + 60]; ps_save($state); rejected($input, 'Concurrent updater');
-    $input = reset_install(); $assets[asset_url('0.2.2', 'update.sig')] = base64_encode(str_repeat('x', 64)); rejected($input, 'Forged signature');
+    $input = reset_install(); $assets[asset_url('0.2.3', 'update.sig')] = base64_encode(str_repeat('x', 64)); rejected($input, 'Forged signature');
     check(!isset(ps_load()['update_pending']), 'A failed download clears its reservation');
-    $input = reset_install(); $assets[asset_url('0.2.2', 'update.json')] .= ' '; rejected($input, 'Tampered manifest');
-    $input = reset_install(); $assets[asset_url('0.2.2', 'sitefren.php')] .= 'tampered'; rejected($input, 'Tampered release bytes');
-    $input = reset_install(); signed_assets('0.2.2', $assets[asset_url('0.2.2', 'sitefren.php')], ['schema' => 2]); rejected($input, 'Unsupported storage schema');
-    $input = reset_install(); signed_assets('0.2.2', $assets[asset_url('0.2.2', 'sitefren.php')], ['php_min' => '99.0.0']); rejected($input, 'Unsupported PHP version');
-    $input = reset_install(); signed_assets('0.2.2', "<?php const PS_VERSION = '0.2.2'; broken syntax !"); rejected($input, 'Signed but invalid PHP');
+    $input = reset_install(); $assets[asset_url('0.2.3', 'update.json')] .= ' '; rejected($input, 'Tampered manifest');
+    $input = reset_install(); $assets[asset_url('0.2.3', 'sitefren.php')] .= 'tampered'; rejected($input, 'Tampered release bytes');
+    $input = reset_install(); signed_assets('0.2.3', $assets[asset_url('0.2.3', 'sitefren.php')], ['schema' => 2]); rejected($input, 'Unsupported storage schema');
+    $input = reset_install(); signed_assets('0.2.3', $assets[asset_url('0.2.3', 'sitefren.php')], ['php_min' => '99.0.0']); rejected($input, 'Unsupported PHP version');
+    $input = reset_install(); signed_assets('0.2.3', "<?php const PS_VERSION = '0.2.3'; broken syntax !"); rejected($input, 'Signed but invalid PHP');
     $input = reset_install(); file_put_contents($editor, $source . "\n<!-- Custom ad -->"); rejected($input, 'Customized editor');
     $input = reset_install(); unset($assets[asset_url(PS_VERSION, 'update.json')]); rejected($input, 'Missing current release');
     $input = reset_install(); $assets[asset_url(PS_VERSION, 'update.json')] = str_repeat('x', 4097); rejected($input, 'Oversized response');
@@ -101,10 +101,10 @@ try {
     }; rejected($input, 'Expired reservation');
     $input = reset_install(); $hook = static function (): void { $state = ps_load(); $state['revision']++; ps_save($state); }; rejected($input, 'Project changed during download');
     $input = reset_install(); $before = ps_load();
-    $url = asset_url('0.2.2', 'sitefren.php'); $assets['https://release-assets.githubusercontent.com/fixture'] = $assets[$url];
+    $url = asset_url('0.2.3', 'sitefren.php'); $assets['https://release-assets.githubusercontent.com/fixture'] = $assets[$url];
     $assets[$url] = ['https://release-assets.githubusercontent.com/fixture'];
     $result = ps_install_update($input);
-    check($result['updated'] && $result['version'] === '0.2.2', 'Signed official redirect installs successfully');
+    check($result['updated'] && $result['version'] === '0.2.3', 'Signed official redirect installs successfully');
     $after = ps_load();
     foreach (['files', 'config', 'password_hash', 'installation', 'revision'] as $field) check($after[$field] === $before[$field], 'Update preserves ' . $field);
     check(file_get_contents(POCKET_ROOT . '/index.html') === '<h1>Keep my published site</h1>', 'Published website is untouched');
@@ -119,7 +119,7 @@ try {
     $probe = POCKET_ROOT . '/boot.php';
     file_put_contents($probe, '<?php define("POCKET_TESTING",true); define("POCKET_ROOT",__DIR__); require __DIR__."/sitefren.php"; echo ps_locked(static fn($s)=>PS_VERSION);');
     exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($probe), $output, $status);
-    check($status === 0 && implode('', $output) === '0.2.2', 'A fresh PHP process boots the replacement with the preserved state');
+    check($status === 0 && implode('', $output) === '0.2.3', 'A fresh PHP process boots the replacement with the preserved state');
     echo "$passed installer checks passed.\n";
 } finally {
     foreach (glob(POCKET_ROOT . '/*') as $path) if (is_file($path)) unlink($path);

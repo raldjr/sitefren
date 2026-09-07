@@ -24,8 +24,8 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   const source=fs.readFileSync(editorPath,'utf8').replace(/const PS_UPDATE_PUBLIC_KEY = '[^']+';/,`const PS_UPDATE_PUBLIC_KEY = '${publicKey}';`);
   fs.writeFileSync(editorPath,source);
   const assets={};
-  for(const version of ['0.2.1','0.2.2']){
-   const code=source.replace("const PS_VERSION = '0.2.1';",`const PS_VERSION = '${version}';`);
+  for(const version of ['0.2.2','0.2.3']){
+   const code=source.replace("const PS_VERSION = '0.2.2';",`const PS_VERSION = '${version}';`);
    const manifest=JSON.stringify({version,sha256:crypto.createHash('sha256').update(code).digest('hex'),size:Buffer.byteLength(code),php_min:'8.2.0',php_max:'9.0.0',schema:1});
    const base=`https://github.com/raldjr/sitefren/releases/download/v${version}/`;
    assets[base+'sitefren.php']=code;assets[base+'update.json']=manifest;assets[base+'update.sig']=crypto.sign(null,Buffer.from(manifest),keys.privateKey).toString('base64');
@@ -45,7 +45,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   const url=`http://127.0.0.1:${port}/sitefren.php`;
   await page.goto(url);await page.locator('#authForm').waitFor({state:'visible'});
   check(await page.locator('#setupHelpLink').isVisible(),'Setup offers help before sign-in');
-  check((await page.locator('#versionBadge').innerText())==='ALPHA 0.2.1'||(await page.locator('#versionBadge').innerText())==='Alpha 0.2.1','The shipped version is identified as Alpha 0.2.1');
+  check((await page.locator('#versionBadge').innerText())==='ALPHA 0.2.2'||(await page.locator('#versionBadge').innerText())==='Alpha 0.2.2','The shipped version is identified as Alpha 0.2.2');
   const code=fs.readFileSync(path.join(root,'builder-state.php'),'utf8').match(/Setup code: ([A-Za-z0-9_-]+)/)[1];
   await page.locator('#setupCode').fill(code);await page.locator('#password').fill('browser-testing-passphrase');await page.locator('#authButton').click();
   await page.locator('#settingsDialog').waitFor({state:'visible'});await page.locator('#cancelSettings').click();
@@ -58,7 +58,7 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   check((await page.locator('#editorHelpLink').getAttribute('href'))==='mailto:hello@raul.ws?subject=Sitefren%20help','Help opens an email without customer data');
   if(process.env.POCKET_TEST_TRANSPORT==='1'){
    await page.locator('#updateAvailable').waitFor({state:'visible'});
-   check((await page.locator('#updateAvailable').innerText()).includes('0.2.2'),'A newer published release shows an update notice');
+   check((await page.locator('#updateAvailable').innerText()).includes('0.2.3'),'A newer published release shows an update notice');
   }
   await page.locator('#demoBtn').click();
   const preview=page.frameLocator('#preview');await preview.locator('h1').waitFor({state:'visible'});
@@ -211,10 +211,10 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
    check(await page.locator('#settingsDialog').isVisible(),'The footer opens Settings with Update now');
    await page.locator('#updateNowBtn').click();await page.locator('#confirmDialog').waitFor({state:'visible'});
    await page.locator('#cancelConfirm').click();
-   check(fs.readFileSync(path.join(root,'sitefren.php'),'utf8').includes("const PS_VERSION = '0.2.1';"),'Cancel leaves the installed version untouched');
+   check(fs.readFileSync(path.join(root,'sitefren.php'),'utf8').includes("const PS_VERSION = '0.2.2';"),'Cancel leaves the installed version untouched');
    const before=JSON.parse(fs.readFileSync(path.join(root,'builder-state.php'),'utf8').split('?>\n')[1]);
    await page.locator('#settingsBtn').click();await page.locator('#updateNowBtn').click();await page.locator('#acceptConfirm').click();
-   await page.waitForFunction(()=>document.querySelector('#versionBadge').textContent.includes('0.2.2'));
+   await page.waitForFunction(()=>document.querySelector('#versionBadge').textContent.includes('0.2.3'));
    await page.locator('#app').waitFor({state:'visible'});
    const after=JSON.parse(fs.readFileSync(path.join(root,'builder-state.php'),'utf8').split('?>\n')[1]);
    check(JSON.stringify(before.files)===JSON.stringify(after.files)&&JSON.stringify(before.config)===JSON.stringify(after.config),'Update now reloads into the signed release with draft and credentials preserved');

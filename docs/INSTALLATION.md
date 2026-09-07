@@ -7,7 +7,7 @@ Built by **Raul Aldrete Jr.** for [Sheepdog Host](https://sheepdoghost.com).
 Upload one PHP file. Describe your website. Preview it. Publish real HTML, CSS,
 and JavaScript on the hosting account you already own.
 
-Sitefren is an **Alpha 0.2.1** application for small static websites, licensed under AGPL-3.0-only.
+Sitefren is an **Alpha 0.2.2** application for small static websites, licensed under AGPL-3.0-only.
 
 **One file to upload is a project requirement.** The customer uploads
 `sitefren.php`; the editor creates its own private state and published site files.
@@ -153,25 +153,23 @@ if an upload fails, earlier successful uploads remain and later files are not se
 Check Images before retrying. Adding an image does not make an AI request; ask the
 AI how to use it, review the draft, and Publish when ready.
 
-## Edit text directly on the page
+## Edit text and images on the page
 
-In Preview, choose the HTML page and click **Edit text**. Click outlined text,
-make your changes, and click **Save text**. Changes go to the draft; click
-**Publish** when ready. Cancel discards unsaved changes. History can restore the
-previous source. No AI provider or hosting file manager is needed for this.
+In Preview, choose the HTML page and click **Edit**. Select text to open a floating
+formatting bar with heading, bold, italic, underline and link controls. Click an
+image to replace it from your uploaded images or upload a replacement, change its
+alt text, width, height and fit, or remove it. Escape or the close button dismisses
+the floating controls. Blank height uses the image's natural proportions.
 
-This first visual-edit mode changes existing plain text, including text inside
-links and formatted headings. It does not change link destinations, images,
-layout, styles, or database content. Use Files or AI for those static-file edits.
-Script-generated text is unavailable in this mode because site JavaScript and
-inline event handlers are disabled while editing. Tables and complex markup can
-render differently with temporary text wrappers. The source is parsed and
-serialized as HTML, so its formatting may normalize on save.
+Click **Save changes** to save text and image edits together to the draft, then
+**Publish** when ready. Cancel discards page edits; uploaded replacements remain
+available in Images. History can restore the previous page source. No AI request
+is needed. Replacement removes old picture sources so browsers display the new image.
 
-Only changed text is applied to an original source DOM. Preview-only CSS/asset
-rewrites, temporary wrappers, editing scripts, and navigation helpers are not
-saved. Original linked CSS, scripts, and asset paths are retained. Page changes,
-generation, and publishing are disabled until the visual edit is saved or canceled.
+Direct image controls work with HTML image elements, including uploaded SVGs used
+as images. CSS background images and inline SVG artwork still use Files or AI.
+Website scripts remain paused while editing. Tables and complex markup can render
+differently with temporary text wrappers. Source formatting may normalize on save.
 
 ## Select something and ask for a change
 
