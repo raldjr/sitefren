@@ -70,6 +70,9 @@ the release and publish its files as a GitHub prerelease. Run
 version/download-link consistency, manifest coverage and release notes. The
 workflow does not replace local browser or representative hosting validation.
 See docs/UPDATES.md for publishing and client discovery behavior.
+Shipping an update includes the signed version tag, successful release workflow,
+and `php scripts/verify-published-release.php`; a branch push alone is not a release.
+The tag workflow also runs the browser and rich-text regressions before publishing.
 
 The release must clearly distinguish supported behavior, known limits, and
 features that remain planned. Submit changes through a pull request to this repository.
