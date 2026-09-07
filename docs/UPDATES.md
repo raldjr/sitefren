@@ -119,6 +119,9 @@ A request to ship an update is complete only after the version commit and tag
 are pushed, the release workflow succeeds, and the public verifier passes.
 A pushed main branch alone does not deliver an editor update. Report the version,
 release link and verification result when handing off a release.
+Public verification is a separate retryable CI job, with bounded retries for
+GitHub release-feed propagation. Main pushes also verify that the current editor
+matches a published signed release; this makes an unshipped version visible in CI.
 
 The tag workflow verifies the signed manifest and complete source checksums,
 runs PHP, core, analytics, update, installer, HTTP, JavaScript and browser checks, then
