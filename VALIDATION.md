@@ -1,3 +1,21 @@
+# Alpha 0.2.4 release validation
+
+Checked on September 7, 2026, with PHP and Chromium via Playwright.
+
+- PHP syntax, 125 core, 79 installation, 47 update-notice, 41 installer,
+  91 HTTP, 71 browser, 37 direct-editing and 28 mobile/PWA checks passed,
+  together with embedded JavaScript/image-drop checks.
+- Desktop and phone layouts were inspected. Workspace regressions cover new
+  projects starting in Chat, the sample shortcut, unsent prompts and unsaved code
+  surviving workspace switches, selected-element context reaching AI, and
+  completed generations returning to Editor. More-menu diagnostics and sign-out,
+  Files, History, publishing and signed browser upgrades remain covered.
+- Floating text/image controls, mobile focus behavior, installability, offline
+  privacy and immediate PWA refresh retain their regression coverage.
+- Provider calls use synthetic fixtures; no new live provider or physical-device
+  testing was performed for this interface change. Shared-host/browser limits
+  documented in earlier validation records still apply.
+
 # Alpha 0.2.3 release validation
 
 Checked on September 7, 2026, with PHP and Chromium via Playwright.

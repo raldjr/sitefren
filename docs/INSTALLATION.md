@@ -7,7 +7,7 @@ Built by **Raul Aldrete Jr.** for [Sheepdog Host](https://sheepdoghost.com).
 Upload one PHP file. Describe your website. Preview it. Publish real HTML, CSS,
 and JavaScript on the hosting account you already own.
 
-Sitefren is an **Alpha 0.2.3** application for small static websites, licensed under AGPL-3.0-only.
+Sitefren is an **Alpha 0.2.4** application for small static websites, licensed under AGPL-3.0-only.
 
 **One file to upload is a project requirement.** The customer uploads
 `sitefren.php`; the editor creates its own private state and published site files.
@@ -153,10 +153,12 @@ if an upload fails, earlier successful uploads remain and later files are not se
 Check Images before retrying. Adding an image does not make an AI request; ask the
 AI how to use it, review the draft, and Publish when ready.
 
-## Mobile workspace and home-screen app
+## Focused workspaces and home-screen app
 
-On phones, use **Website** and **Chat with AI** to switch views without losing
-an unsent prompt. A completed generation opens Website. During direct editing,
+Use **Chat** and **Editor** on desktop and phones to switch views without losing
+an unsent prompt or unsaved code edits. A completed generation opens Editor.
+Use **Continue in Chat** after selecting a page element to request an AI change.
+Request details and Sign out are available from the header’s **More options** menu. During direct editing,
 inactive navigation collapses and Save/Cancel stay above the preview. Touch
 controls are larger, form text avoids automatic zoom, and floating panels adjust
 to the visible viewport when the keyboard opens.

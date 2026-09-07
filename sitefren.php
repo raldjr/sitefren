@@ -1,6 +1,6 @@
 <?php
 /**
- * Sitefren 0.2.3 — an uploadable AI editor for small static websites.
+ * Sitefren 0.2.4 — an uploadable AI editor for small static websites.
  * SPDX-License-Identifier: AGPL-3.0-only
  * Copyright (c) 2026 Raul Aldrete Jr. and contributors
  * Built by Raul Aldrete Jr. for Sheepdog Host.
@@ -692,7 +692,7 @@
  */
 declare(strict_types=1);
 
-const PS_VERSION = '0.2.3';
+const PS_VERSION = '0.2.4';
 const PS_UPDATE_PUBLIC_KEY = 'TthJkmF58DxCfaw/0N6iRLhORlImuMT3brLGxKJV7jM=';
 // Optional embedded sponsor artwork (data:image/...;base64,...) preserves one-file delivery.
 const PS_SPONSOR_IMAGE = '';
@@ -8697,7 +8697,7 @@ try {
           min-height: 65px;
         }
       }
-      .mobile-switch { display: none; }
+      .workspace-switch { display: none; }
       .offline-notice { padding: 10px 16px; background: #fff7ed; color: #9a3412; font-size: 14px; text-align: center; }
       @media (max-width: 720px) {
         body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
@@ -8706,16 +8706,16 @@ try {
         button, .top-right a, .help-link { min-height: 44px; }
         .top-right a { display: inline-flex; align-items: center; }
         input, textarea, select, .composer textarea, .image-toolbar input, .image-toolbar select, .text-toolbar select { font-size: 16px; }
-        .mobile-switch { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: white; }
-        .mobile-switch button { flex: 1; border: 0; background: #f4f4f5; }
-        .mobile-switch button[aria-pressed="true"] { color: var(--brand); background: var(--tint); font-weight: 700; }
-        .app[data-mobile-pane="site"] > .sidebar, .app[data-mobile-pane="chat"] > .workbench { display: none; }
-        .app[data-mobile-pane="chat"] > .sidebar { min-height: 360px; height: max(360px, calc(var(--visible-height, 100dvh) - var(--mobile-chrome, 180px))); max-height: none; }
-        .workbench { height: max(480px, calc(var(--visible-height, 100dvh) - var(--mobile-chrome, 180px))); min-height: 480px; }
+        .workspace-switch { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: white; }
+        .workspace-switch button { flex: 1; border: 0; background: #f4f4f5; }
+        .workspace-switch button[aria-pressed="true"] { color: var(--brand); background: var(--tint); font-weight: 700; }
+        .app[data-workspace="editor"] > .sidebar, .app[data-workspace="chat"] > .workbench { display: none; }
+        .app[data-workspace="chat"] > .sidebar { min-height: 360px; height: max(360px, calc(var(--visible-height, 100dvh) - var(--workspace-chrome, 180px))); max-height: none; }
+        .workbench { height: max(480px, calc(var(--visible-height, 100dvh) - var(--workspace-chrome, 180px))); min-height: 480px; }
         .toolbar { min-height: 0; gap: 6px; padding: 8px 12px; }
         .tabs { gap: 2px; }
         .tabs button { padding: 8px; }
-        .app:has(.visual-bar:not([hidden])) .mobile-switch,
+        .app:has(.visual-bar:not([hidden])) .workspace-switch,
         .app:has(.visual-bar:not([hidden])) .toolbar,
         body:has(.visual-bar:not([hidden])) .top-right { display: none; }
         .visual-bar { align-items: center; flex-wrap: wrap; background: var(--paper); }
@@ -8729,6 +8729,112 @@ try {
         .dialog-actions { flex-wrap: wrap; }
         .composer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
       }
+      .account-menu { position: relative; }
+      .account-menu summary { list-style: none; cursor: pointer; padding: 8px 10px; border-radius: 6px; color: var(--muted); }
+      .account-menu summary::-webkit-details-marker { display: none; }
+      .account-menu summary:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+      .account-menu-items { position: absolute; right: 0; top: calc(100% + 6px); z-index: 110; min-width: 170px; padding: 5px; border: 1px solid var(--line); border-radius: 8px; background: white; box-shadow: 0 8px 24px #0001; }
+      .account-menu-items button { display: block; width: 100%; text-align: left; white-space: nowrap; padding: 10px 12px; }
+      .topbar { height: 64px; min-height: 64px; padding: 0 28px; background: #fff; }
+      .top-right { gap: 12px; }
+      .top-right .help-link { font-size: 12px; color: var(--muted); text-decoration: none; }
+      .brand .tag { border: 0; padding: 0 0 0 4px; background: none; color: #8b8b88; font-size: 9px; }
+      .app { display: block; height: auto; background: #fafaf8; }
+      .workspace-switch { display: flex; justify-content: center; align-items: center; gap: 4px; min-height: 54px; padding: 8px; border-bottom: 1px solid var(--line); background: #fff; }
+      .workspace-switch button { flex: none; min-width: 90px; padding: 8px 22px; border: 0; border-radius: 6px; font-size: 14px; background: transparent; color: var(--muted); }
+      .workspace-switch button[aria-pressed="true"] { color: var(--brand); background: #fff1e9; font-weight: 600; }
+      .app[data-workspace="editor"] > .sidebar, .app[data-workspace="chat"] > .workbench { display: none; }
+      .sidebar { width: 100%; max-width: 760px; margin: 0 auto; height: max(540px, calc(var(--visible-height, 100dvh) - var(--workspace-chrome, 118px))); min-height: 0; max-height: none; border: 0; background: #fff; }
+      .side-head { padding: 38px 30px 22px; border: 0; }
+      .chat-eyebrow { font-size: 9px; letter-spacing: 1.8px; color: #8b8b80; }
+      .side-head h1 { margin: 20px 0 14px; font: 400 46px/1.08 Georgia, serif; letter-spacing: -1.5px; }
+      .side-head p { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.7; }
+      .sidebar.has-messages .side-head { padding: 22px 30px 12px; }
+      .sidebar.has-messages .side-head h1 { font-size: 28px; margin: 0; }
+      .sidebar.has-messages .side-head p, .sidebar.has-messages .chat-eyebrow { display: none; }
+      .conversation { padding: 20px 30px; min-height: 120px; }
+      .welcome { padding: 10px 0; text-align: left; border-top: 1px solid var(--line); }
+      .welcome h2 { margin: 18px 0 10px; font-size: 16px; font-weight: 600; }
+      .welcome p { font-size: 12px; line-height: 1.7; color: var(--muted); }
+      .suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 20px; }
+      .suggestions button { width: auto; padding: 8px 10px; font-size: 11px; border-radius: 5px; background: #fafaf8; }
+      .sample-link { border: 0; background: none; padding: 12px 0; color: var(--brand); font-size: 12px; }
+      .message { padding: 14px 0; margin-bottom: 12px; font-size: 14px; line-height: 1.7; }
+      .message.user { margin-left: 32px; padding: 14px 18px; background: #f5f5f2; border-radius: 12px; }
+      .message.assistant { background: none; border-radius: 0; margin-right: 24px; }
+      .message .who { font-size: 9px; letter-spacing: 1px; margin-bottom: 7px; color: #8b8b85; }
+      .composer-wrap { padding: 16px 20px 14px; border: 0; background: white; }
+      .composer { padding: 14px; border: 1px solid #deded6; border-radius: 12px; background: white; box-shadow: none; }
+      .composer textarea { min-height: 110px; padding: 4px 2px 12px; font-size: 14px; line-height: 1.6; }
+      .composer-bottom button { min-height: 36px; padding: 8px 12px; }
+      .composer-note { font-size: 10px; color: #92928a; margin: 9px 0; }
+      .provider-status { display: block; margin: 0 auto; border: 0; padding: 4px 8px; color: #85857d; background: none; font-size: 11px; }
+      .workbench { height: max(560px, calc(var(--visible-height, 100dvh) - var(--workspace-chrome, 118px))); min-height: 560px; background: #f7f7f3; }
+      .workspace-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 28px; background: #fff; border-bottom: 1px solid var(--line); }
+      .workspace-heading strong { display: block; font-size: 14px; font-weight: 600; }
+      .workspace-heading #saveStatus { display: block; margin-top: 5px; font-size: 10px; color: #85857d; }
+      .workspace-heading #saveStatus::before { content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 5px; border-radius: 50%; background: #899b76; }
+      .workspace-heading #publishBtn { padding: 9px 18px; min-width: 100px; font-size: 12px; }
+      .toolbar { display: flex; justify-content: space-between; gap: 12px; min-height: 54px; padding: 8px 28px; background: #fff; }
+      .tabs { gap: 4px; }
+      .tabs button { font-size: 11px; padding: 7px 12px; border-radius: 5px; }
+      .view-controls { margin-left: auto; }
+      .view-controls button, .view-controls select { min-height: 32px; padding: 5px 9px; font-size: 11px; }
+      .workbench > .sponsor-spot { width: calc(100% - 56px); max-width: none; min-height: 0; margin: 12px 28px 0; border: 1px dashed #dddcd3; background: #fafaf5; border-radius: 6px; flex-shrink: 0; }
+      .workbench > .sponsor-spot .sponsor-link { width: 100%; min-height: 44px; padding: 10px 12px; gap: 12px; }
+      .workbench > .sponsor-spot .sponsor-copy { display: flex; flex: 1; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
+      .workbench > .sponsor-spot .sponsor-label { font-size: 8px; color: #999990; letter-spacing: 1px; }
+      .workbench > .sponsor-spot strong { font-size: 11px; color: #858578; font-weight: 400; }
+      .workbench > .sponsor-spot .sponsor-cta { margin-left: auto; font-size: 10px; color: #858578; }
+      .canvas { padding: 16px 28px 24px; align-items: center; background: #f7f7f3; }
+      .canvas > .preview-actions, .canvas > .visual-bar, .canvas > .preview-shell { width: 100%; max-width: 1360px; }
+      .canvas > .preview-shell.mobile { max-width: 390px; }
+      .preview-shell { box-shadow: none; border: 1px solid #deded6; border-radius: 9px; }
+      .browser-bar { height: 30px; padding: 7px 14px; flex-shrink: 0; background: #fff; }
+      .browser-bar .address { text-align: left; font-size: 10px; padding: 0; color: #92928a; }
+      .preview-actions { min-height: 30px; }
+      .preview-actions button { padding: 6px 10px; font-size: 11px; min-height: 30px; }
+      .preview-actions #previewHint { font-size: 10px; color: #92928a; }
+      .bench-footer { padding: 8px 28px; font-size: 9px; background: #fafaf7; }
+      .app:has(.visual-bar:not([hidden])) > .workspace-switch,
+      .workbench:has(.visual-bar:not([hidden])) > .workspace-heading,
+      .workbench:has(.visual-bar:not([hidden])) > .sponsor-spot { display: none; }
+      @media (max-width: 720px) {
+        .topbar { height: auto; min-height: 64px; padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left)); gap: 6px; }
+        .top-right { width: auto; gap: 3px; flex-wrap: nowrap; }
+        .top-right button, .account-menu summary { min-height: 44px; padding: 10px 8px; }
+        .brand { gap: 7px; font-size: 15px; }
+        .brand .tag { font-size: 8px; }
+        .workspace-switch { min-height: 54px; padding: 6px; }
+        .workspace-switch button { min-width: 90px; min-height: 42px; }
+        .app[data-workspace="chat"] > .sidebar { height: max(520px, calc(var(--visible-height, 100dvh) - var(--workspace-chrome, 118px))); min-height: 520px; max-height: none; }
+        .side-head { padding: 28px 22px 18px; }
+        .side-head h1 { font-size: 38px; }
+        .sidebar.has-messages .side-head { padding: 20px 22px 10px; }
+        .conversation { padding: 12px 22px; }
+        .composer-wrap { padding: 12px 14px max(12px, env(safe-area-inset-bottom)); }
+        .composer textarea { font-size: 16px; min-height: 100px; }
+        .composer-bottom button { min-height: 44px; }
+        .workbench { height: max(540px, calc(var(--visible-height, 100dvh) - var(--workspace-chrome, 118px))); min-height: 540px; }
+        .workspace-heading { padding: 12px 16px; }
+        .workspace-heading #publishBtn { min-height: 44px; }
+        .toolbar { flex-wrap: wrap; padding: 8px 14px; gap: 6px; }
+        .tabs { flex: 1; }
+        .tabs button { padding: 7px 8px; min-height: 38px; }
+        .view-controls { gap: 4px; }
+        .view-controls button { min-height: 38px; }
+        .view-controls select { font-size: 16px; max-width: 150px; }
+        .workbench > .sponsor-spot { width: calc(100% - 28px); margin: 10px 14px 0; }
+        .workbench > .sponsor-spot .sponsor-link { padding: 9px; }
+        .workbench > .sponsor-spot .sponsor-copy { gap: 4px 8px; }
+        .workbench > .sponsor-spot .sponsor-label { font-size: 7px; }
+        .workbench > .sponsor-spot .sponsor-cta { font-size: 9px; }
+        .canvas { padding: 12px 14px; }
+        .preview-actions { gap: 6px; }
+        .preview-actions button { min-height: 44px; }
+        .preview-actions #previewHint { display: none; }
+        .bench-footer { padding: 7px 14px; font-size: 9px; }
+      }
     </style>
   </head>
   <body>
@@ -8738,12 +8844,15 @@ try {
         <span class="tag" id="versionBadge">Alpha <?= PS_VERSION ?></span>
       </div>
       <div class="top-right" id="topActions" hidden>
-        <span class="subtle" id="saveStatus">Draft saved</span
-        ><button id="diagnosticsBtn" class="quiet">Request details</button
-        ><button id="settingsBtn" class="quiet">Settings</button
-        ><a id="editorHelpLink" class="help-link" href="mailto:hello@raul.ws?subject=Sitefren%20help">Get help</a
-        ><button id="logoutBtn" class="quiet" aria-label="Sign out">Sign out</button
-        ><button id="publishBtn" class="primary">Publish ↗</button>
+        <button id="settingsBtn" class="quiet">Settings</button>
+        <a id="editorHelpLink" class="help-link" href="mailto:hello@raul.ws?subject=Sitefren%20help">Help</a>
+        <details id="accountMenu" class="account-menu">
+          <summary aria-label="More options">•••</summary>
+          <div class="account-menu-items">
+            <button id="diagnosticsBtn" class="quiet">Request details</button>
+            <button id="logoutBtn" class="quiet" aria-label="Sign out">Sign out</button>
+          </div>
+        </details>
       </div>
     </header>
     <main id="gate" class="gate">
@@ -8780,19 +8889,16 @@ try {
       <div id="checks" class="checks"></div>
     </main>
     <div id="offlineNotice" class="offline-notice" role="status" hidden>You're offline. Keep this page open and reconnect before saving.</div>
-    <main id="app" class="app" data-mobile-pane="site" hidden>
-      <nav class="mobile-switch" aria-label="Mobile workspace">
-        <button id="mobileSiteBtn" type="button" aria-pressed="true">Website</button>
-        <button id="mobileChatBtn" type="button" aria-pressed="false">Chat with AI</button>
+    <main id="app" class="app" data-workspace="editor" hidden>
+      <nav class="workspace-switch" aria-label="Workspace">
+        <button id="chatWorkspaceBtn" type="button" aria-pressed="false">Chat</button>
+        <button id="editorWorkspaceBtn" type="button" aria-pressed="true">Editor</button>
       </nav>
       <aside class="sidebar">
         <div class="side-head">
-          <h1>What are we making?</h1>
-          <p>A small corner of the internet, entirely yours.</p>
-          <div class="status">
-            <span class="dot"></span
-            ><span id="providerStatus">Connect your AI provider to begin</span>
-          </div>
+          <span class="chat-eyebrow">FROM AN IDEA TO YOUR WEBSITE</span>
+          <h1>A little space<br />of your own.</h1>
+          <p>Tell us what you have in mind. We’ll help you make it.</p>
         </div>
         <div id="requestError" class="request-error" role="alert" hidden>
           <span id="requestErrorText"></span>
@@ -8825,10 +8931,15 @@ try {
               ><button id="sendBtn" type="submit" class="primary">Create ↗</button>
             </div>
           </form>
-          <p class="composer-note">Drop images here, or click + Add image.</p>
+          <p class="composer-note">Drop images here to add them.</p>
+          <button id="providerStatus" class="provider-status" type="button">Connect your AI provider</button>
         </div>
       </aside>
       <section class="workbench" aria-label="Website workspace">
+        <div class="workspace-heading">
+          <div><strong>Your website</strong><span id="saveStatus">Draft saved</span></div>
+          <button id="publishBtn" class="primary">Publish ↗</button>
+        </div>
         <div class="toolbar">
           <div class="tabs" role="tablist" aria-label="Workspace views">
             <button class="active" data-tab="preview" role="tab" aria-selected="true">
@@ -8837,19 +8948,7 @@ try {
             ><button data-tab="assets" role="tab" aria-selected="false">Images</button
             ><button data-tab="history" role="tab" aria-selected="false">History</button>
           </div>
-          <aside id="sponsorSpot" class="sponsor-spot" aria-label="Advertisement from Sheepdog Host">
-            <a class="sponsor-link" href="https://sheepdoghost.com?utm_source=sitefren&amp;utm_medium=editor&amp;utm_campaign=hosting"
-              target="_blank" rel="sponsored noopener noreferrer">
-              <?php if (PS_SPONSOR_IMAGE !== ''): ?>
-                <img class="sponsor-image" src="<?= htmlspecialchars(PS_SPONSOR_IMAGE, ENT_QUOTES) ?>" alt="" />
-              <?php endif; ?>
-              <span class="sponsor-copy">
-                <span class="sponsor-label">Advertisement · Sheepdog Host</span>
-                <strong>A home for your next website.</strong>
-                <span class="sponsor-cta">Explore hosting ↗</span>
-              </span>
-            </a>
-          </aside>
+
           <div class="view-controls" id="viewControls">
             <select id="pageSelect" aria-label="Preview page">
               <option>index.html</option></select
@@ -8863,6 +8962,19 @@ try {
             ><button id="mobileBtn" aria-label="Mobile preview" aria-pressed="false">▯</button>
           </div>
         </div>
+          <aside id="sponsorSpot" class="sponsor-spot" aria-label="Advertisement from Sheepdog Host">
+            <a class="sponsor-link" href="https://sheepdoghost.com?utm_source=sitefren&amp;utm_medium=editor&amp;utm_campaign=hosting"
+              target="_blank" rel="sponsored noopener noreferrer">
+              <?php if (PS_SPONSOR_IMAGE !== ''): ?>
+                <img class="sponsor-image" src="<?= htmlspecialchars(PS_SPONSOR_IMAGE, ENT_QUOTES) ?>" alt="" />
+              <?php endif; ?>
+              <span class="sponsor-copy">
+                <span class="sponsor-label">Advertisement · Sheepdog Host</span>
+                <strong>A home for your website.</strong>
+                <span class="sponsor-cta">Explore hosting ↗</span>
+              </span>
+            </a>
+          </aside>
         <div id="previewPanel" class="canvas">
           <div id="previewActions" class="preview-actions" hidden>
             <div>
@@ -8870,9 +8982,10 @@ try {
               ><button id="selectElementBtn" type="button" aria-pressed="false">
                 Select for AI
               </button>
+              <button id="selectionChatBtn" type="button" hidden>Continue in Chat →</button>
             </div>
             <span id="previewHint"
-              >Edit text and images, or select something to change with AI.</span
+              >Edit your page, or select an element for AI.</span
             >
           </div>
           <div id="visualBar" class="visual-bar" hidden>
@@ -8911,8 +9024,7 @@ try {
           </div>
           <div class="preview-shell" id="previewShell">
             <div class="browser-bar" aria-hidden="true">
-              <i></i><i></i><i></i
-              ><span class="address" id="previewAddress">Your next idea lives here</span>
+              <span class="address" id="previewAddress">Your next idea lives here</span>
             </div>
             <div id="emptyPreview" class="empty-preview">
               <div class="illustration" aria-hidden="true"></div>
@@ -9117,24 +9229,32 @@ try {
       addEventListener('online', connectionStatus);
       addEventListener('offline', connectionStatus);
       connectionStatus();
-      function mobilePane(pane) {
+      let workspaceChosen = false;
+      function workspacePane(pane) {
         if (visual) return;
-        byId('app').dataset.mobilePane = pane;
-        byId('mobileSiteBtn').setAttribute('aria-pressed', String(pane === 'site'));
-        byId('mobileChatBtn').setAttribute('aria-pressed', String(pane === 'chat'));
+        workspaceChosen = true;
+        byId('app').dataset.workspace = pane;
+        byId('editorWorkspaceBtn').setAttribute('aria-pressed', String(pane === 'editor'));
+        byId('chatWorkspaceBtn').setAttribute('aria-pressed', String(pane === 'chat'));
+        byId('accountMenu').open = false;
       }
-      byId('mobileSiteBtn').addEventListener('click', () => mobilePane('site'));
-      byId('mobileChatBtn').addEventListener('click', () => mobilePane('chat'));
+      byId('editorWorkspaceBtn').addEventListener('click', () => workspacePane('editor'));
+      byId('chatWorkspaceBtn').addEventListener('click', () => workspacePane('chat'));
+      byId('selectionChatBtn').addEventListener('click', () => { workspacePane('chat'); byId('prompt').focus(); });
+      byId('providerStatus').addEventListener('click', () => openSettings());
+      byId('accountMenu').querySelectorAll('button').forEach(button => button.addEventListener('click', () => { byId('accountMenu').open = false; }));
+      document.addEventListener('click', event => { if (!byId('accountMenu').contains(event.target)) byId('accountMenu').open = false; });
+      document.addEventListener('keydown', event => { if (event.key === 'Escape') byId('accountMenu').open = false; });
       function mobileViewport() {
         const height = window.visualViewport?.height || innerHeight;
         document.documentElement.style.setProperty('--visible-height', height + 'px');
         const chrome = document.querySelector('.topbar').getBoundingClientRect().height +
-          document.querySelector('.mobile-switch').getBoundingClientRect().height +
+          document.querySelector('.workspace-switch').getBoundingClientRect().height +
           byId('offlineNotice').getBoundingClientRect().height;
-        document.documentElement.style.setProperty('--mobile-chrome', chrome + 'px');
+        document.documentElement.style.setProperty('--workspace-chrome', chrome + 'px');
       }
       const mobileResize = new ResizeObserver(mobileViewport);
-      for (const node of [document.querySelector('.topbar'), document.querySelector('.mobile-switch'), byId('offlineNotice')]) mobileResize.observe(node);
+      for (const node of [document.querySelector('.topbar'), document.querySelector('.workspace-switch'), byId('offlineNotice')]) mobileResize.observe(node);
       addEventListener('resize', mobileViewport);
       window.visualViewport?.addEventListener('resize', mobileViewport);
       let updateCheckStarted = false;
@@ -9305,8 +9425,8 @@ try {
         byId('prompt').disabled = value;
         byId('imageInput').disabled = value;
         byId('diagnosticsBtn').disabled = false;
-        byId('mobileSiteBtn').disabled = false;
-        byId('mobileChatBtn').disabled = false;
+        byId('editorWorkspaceBtn').disabled = false;
+        byId('chatWorkspaceBtn').disabled = false;
       }
       async function run(action, data = {}, message = '') {
         if (busy) return;
@@ -9314,7 +9434,7 @@ try {
         try {
           state = await api(action, data);
           render();
-          if (action === 'generate' && !state.pending) mobilePane('site');
+          if (['generate', 'demo'].includes(action) && !state.pending) workspacePane('editor');
           if (message) notice(message);
         } catch (e) {
           notice(e.message, true);
@@ -9345,6 +9465,8 @@ try {
         byId('app').hidden = !state.authenticated;
         byId('topActions').hidden = !state.authenticated;
         if (!state.authenticated) {
+          workspaceChosen = false;
+          byId('accountMenu').open = false;
           updateCheckStarted = false;
           byId('updateAvailable').hidden = true;
           byId('authForm').hidden = false;
@@ -9366,14 +9488,15 @@ try {
           );
           return;
         }
+        if (!workspaceChosen) workspacePane(Object.keys(state.files).length && !state.last_error ? 'editor' : 'chat');
         if (!updateCheckStarted) {
           updateCheckStarted = true;
           checkUpdates();
         }
         byId('providerStatus').textContent =
           state.config.has_key && state.config.model
-            ? `Selected: ${state.config.provider === 'openrouter' ? 'OpenRouter' : 'Concentrate'} · ${state.config.model}`
-            : 'Connect your AI provider to begin';
+            ? `Connected to ${state.config.provider === 'openrouter' ? 'OpenRouter' : 'Concentrate'}`
+            : 'Connect your AI provider';
         byId('saveStatus').textContent = state.published_at
           ? state.dirty
             ? 'Unpublished changes'
@@ -9399,27 +9522,22 @@ try {
       function renderChat() {
         const box = byId('conversation');
         box.replaceChildren();
+        document.querySelector('.sidebar').classList.toggle('has-messages', !!state.messages.length);
         if (!state.messages.length) {
           const intro = document.createElement('div');
           intro.className = 'welcome';
-          const icon = textElement('div', '✳', 'welcome-icon');
-          icon.setAttribute('aria-hidden', 'true');
           intro.append(
-            icon,
-            textElement('h2', 'Big idea. Small beginning.'),
-            textElement(
-              'p',
-              'Tell me about your business, project, or next adventure. We’ll turn it into a website.',
-            ),
+            textElement('h2', 'What would you like to make?'),
+            textElement('p', 'Start with an idea, a few words, or something you’ve already written.'),
           );
           const suggestions = document.createElement('div');
           suggestions.className = 'suggestions';
-          for (const prompt of [
-            'A welcoming website for my local business',
-            'A minimal portfolio for my creative work',
-            'A landing page for my next big idea',
+          for (const [label, prompt] of [
+            ['A small business', 'A welcoming website for my local business'],
+            ['A portfolio', 'A minimal portfolio for my creative work'],
+            ['A landing page', 'A landing page for my next big idea'],
           ]) {
-            const b = textElement('button', prompt);
+            const b = textElement('button', '+ ' + label);
             b.type = 'button';
             b.addEventListener('click', () => {
               byId('prompt').value = prompt;
@@ -9427,7 +9545,10 @@ try {
             });
             suggestions.append(b);
           }
-          intro.append(suggestions);
+          const sample = textElement('button', 'Or try a sample website →', 'sample-link');
+          sample.id = 'chatDemoBtn'; sample.type = 'button';
+          sample.addEventListener('click', () => byId('demoBtn').click());
+          intro.append(suggestions, sample);
           box.append(intro);
         } else
           for (const msg of state.messages) {
@@ -9723,6 +9844,7 @@ try {
         );
       }
       function renderSelection() {
+        byId('selectionChatBtn').hidden = !selectedElement;
         byId('selectionChip').hidden = !selectedElement;
         byId('selectionLabel').textContent = selectedElement
           ? selectionName(selectedElement.node) + ' · ' + selectedElement.path
@@ -9730,8 +9852,8 @@ try {
         byId('selectElementBtn').textContent = selectionMode ? 'Stop selecting' : 'Select for AI';
         byId('selectElementBtn').setAttribute('aria-pressed', String(!!selectionMode));
         byId('previewHint').textContent = selectionMode
-          ? 'Click an element. Use Select parent for its card or section, then describe your change.'
-          : 'Edit text and images, or select something to change with AI.';
+          ? 'Select an element, then continue in Chat to describe your change.'
+          : 'Edit your page, or select an element for AI.';
         byId('selectParentBtn').disabled =
           !selectedElement ||
           selectedElement.node.parentElement === selectedElement.document.body ||
