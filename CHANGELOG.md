@@ -1,5 +1,12 @@
 # Changes
 
+## 0.2.5 — September 8, 2026
+
+- Restore side-by-side chat and website editing on desktop, with the original
+  370px chat sidebar (320px on smaller desktop windows).
+- Keep the current separate Chat/Editor views on phones, including focused
+  editing and PWA support. Preserve prompts and code edits across resizing.
+
 ## 0.2.4 — September 7, 2026
 
 - Give Chat and Editor their own full workspace on desktop and mobile, with a
