@@ -1,6 +1,6 @@
 <?php
 /**
- * Sitefren 0.2.4 — an uploadable AI editor for small static websites.
+ * Sitefren 0.2.5 — an uploadable AI editor for small static websites.
  * SPDX-License-Identifier: AGPL-3.0-only
  * Copyright (c) 2026 Raul Aldrete Jr. and contributors
  * Built by Raul Aldrete Jr. for Sheepdog Host.
@@ -692,7 +692,7 @@
  */
 declare(strict_types=1);
 
-const PS_VERSION = '0.2.4';
+const PS_VERSION = '0.2.5';
 const PS_UPDATE_PUBLIC_KEY = 'TthJkmF58DxCfaw/0N6iRLhORlImuMT3brLGxKJV7jM=';
 // Optional embedded sponsor artwork (data:image/...;base64,...) preserves one-file delivery.
 const PS_SPONSOR_IMAGE = '';
@@ -8835,6 +8835,22 @@ try {
         .preview-actions #previewHint { display: none; }
         .bench-footer { padding: 7px 14px; font-size: 9px; }
       }
+      @media (min-width: 721px) {
+        .app { display: grid; grid-template-columns: 320px minmax(0, 1fr); height: max(560px, calc(var(--visible-height, 100dvh) - var(--workspace-chrome, 64px))); }
+        .workspace-switch { display: none; }
+        .app[data-workspace] > .sidebar { display: flex; height: 100%; min-width: 0; max-width: none; border-right: 1px solid var(--line); }
+        .app[data-workspace] > .workbench { display: flex; height: 100%; min-width: 0; }
+        .side-head, .sidebar.has-messages .side-head { padding: 24px 22px 16px; }
+        .side-head h1, .sidebar.has-messages .side-head h1 { font-size: 28px; }
+        .conversation { padding: 16px 22px; }
+        .composer-wrap { padding: 12px; }
+        .toolbar { flex-wrap: wrap; padding: 8px 16px; }
+        .canvas { padding: 16px; }
+        #selectionChatBtn { display: none; }
+      }
+      @media (min-width: 1001px) {
+        .app { grid-template-columns: 370px minmax(0, 1fr); }
+      }
     </style>
   </head>
   <body>
@@ -9852,7 +9868,7 @@ try {
         byId('selectElementBtn').textContent = selectionMode ? 'Stop selecting' : 'Select for AI';
         byId('selectElementBtn').setAttribute('aria-pressed', String(!!selectionMode));
         byId('previewHint').textContent = selectionMode
-          ? 'Select an element, then continue in Chat to describe your change.'
+          ? 'Select an element, then describe your change in Chat.'
           : 'Edit your page, or select an element for AI.';
         byId('selectParentBtn').disabled =
           !selectedElement ||

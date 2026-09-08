@@ -1,3 +1,18 @@
+# Alpha 0.2.5 release validation
+
+Checked on September 8, 2026, with PHP and Chromium via Playwright.
+
+- PHP syntax, 125 core, 79 installation, 47 update-notice, 41 installer,
+  91 HTTP, 74 browser, 37 direct-editing and 28 mobile/PWA checks passed,
+  together with embedded JavaScript/image-drop checks.
+- Desktop screenshots were inspected. Split layouts at 721, 900 and 1440px
+  keep both panes visible without overlap or horizontal page overflow.
+  Resizing between phone and desktop preserves unsent prompts and code edits.
+- Existing phone navigation, floating text/image editing, publishing, signed
+  upgrades and PWA coverage remain intact. No provider integration changed;
+  requests use synthetic fixtures. Physical devices and shared hosts were not
+  newly tested for this CSS layout correction.
+
 # Alpha 0.2.4 release validation
 
 Checked on September 7, 2026, with PHP and Chromium via Playwright.
