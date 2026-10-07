@@ -217,7 +217,11 @@ const delay=ms=>new Promise(r=>setTimeout(r,ms));
   await page.setViewportSize({width:390,height:844});await page.reload();await page.locator('#app').waitFor({state:'visible'});
   check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Mobile editor has no horizontal page overflow');
   check(await page.locator('#sponsorSpot').isVisible(),'The hosting advertisement remains visible on mobile');
-  check(await page.locator('#versionBadge').isVisible()&&await page.locator('#editorHelpLink').isVisible(),'Mobile retains the version badge and independent help link');
+  await page.locator('#viewMenuBtn').click();
+  check(await page.locator('#viewMenuHelpLink').isVisible()&&await page.locator('#viewMenuHelpLink').getAttribute('href')===await page.locator('#editorHelpLink').getAttribute('href'),'Mobile keeps the independent help link in the view menu');
+  await page.keyboard.press('Escape');await page.locator('#settingsBtn').click();
+  check((await page.locator('.settings-about').innerText()).includes(await page.locator('#versionBadge').textContent()),'Mobile shows the version in Settings > About');
+  await page.locator('#cancelSettings').click();await page.locator('#settingsDialog').waitFor({state:'hidden'});
   if(process.env.SCREENSHOT_PATH)await page.screenshot({path:process.env.SCREENSHOT_PATH+'.mobile.png',fullPage:true});
   if(process.env.POCKET_TEST_TRANSPORT==='1'){
    await page.locator('#updateAvailable').waitFor({state:'visible'});
