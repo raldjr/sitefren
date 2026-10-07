@@ -23,13 +23,19 @@ function curl_exec($ch){
         ($options[CURLOPT_WRITEFUNCTION])($ch,$body);
         return true;
     }
-    if(!str_starts_with($ch->url,'https://api.concentrate.ai/')&&!str_starts_with($ch->url,'https://openrouter.ai/'))throw new RuntimeException('Unexpected provider destination');
+    if(!str_starts_with($ch->url,'https://api.concentrate.ai/')&&!str_starts_with($ch->url,'https://openrouter.ai/')&&!str_starts_with($ch->url,'https://ai-gateway.vercel.sh/'))throw new RuntimeException('Unexpected provider destination');
+    $chatApi=str_contains($ch->url,'/chat/completions');
     if(empty($options[CURLOPT_POST])){
         foreach($options[CURLOPT_HTTPHEADER] as $header)if(str_starts_with($header,'Authorization:'))throw new RuntimeException('A key was sent to a public catalog');
         $response=['data'=>[['id'=>'fixture-model','display_name'=>'Fixture Model'],['id'=>'fixture-zdr','display_name'=>'Restricted Fixture']],'has_more'=>false];
+        if(str_starts_with($ch->url,'https://ai-gateway.vercel.sh/')){
+            foreach($response['data'] as &$row)$row+=['type'=>'language','tags'=>['structured-output']];
+            unset($row);
+            $response['data'][]=['id'=>'fixture-image','type'=>'image','tags'=>['image-generation']];
+        }
     }else{
         $payload=json_decode($options[CURLOPT_POSTFIELDS],true);
-        $format = str_contains($ch->url,'openrouter.ai') ? ($payload['response_format']['json_schema'] ?? []) : ($payload['text']['format'] ?? []);
+        $format = $chatApi ? ($payload['response_format']['json_schema'] ?? []) : ($payload['text']['format'] ?? []);
         if (($format['strict'] ?? false) !== true || ($format['schema']['required'] ?? []) !== ['message','files','delete','edits']) throw new RuntimeException('Missing structured edit schema');
         if($payload['model']==='fixture-fatal')trigger_error('Synthetic fatal; private-fixture-message',E_USER_ERROR);
         if($payload['model']==='fixture-exit')exit;
@@ -55,7 +61,7 @@ function curl_exec($ch){
             }
             if ($payload['model']==='fixture-invalid-json') $text='<html>private-model-output</html>';
             if ($payload['model']==='fixture-cutoff') $text='{"message":"Building","files":[{"path":"index.html","content":"unfinished';
-            $response=str_contains($ch->url,'openrouter.ai')?['choices'=>[['finish_reason'=>'stop','message'=>['content'=>$text]]]]:['status'=>'completed','output'=>[['type'=>'message','content'=>[['type'=>'output_text','text'=>$text]]]]];
+            $response=$chatApi?['choices'=>[['finish_reason'=>'stop','message'=>['content'=>$text]]]]:['status'=>'completed','output'=>[['type'=>'message','content'=>[['type'=>'output_text','text'=>$text]]]]];
             if ($payload['model']==='fixture-cutoff') $response['usage']=['output_tokens'=>$payload['max_output_tokens']];
         }
     }

@@ -33,7 +33,7 @@ separately by the provider you connect.
 - Drag one or more images onto the prompt area, or click **+ Add image**.
 - Restore earlier drafts with History.
 - Publish ordinary site files to your hosting, with conflict checks.
-- Choose OpenRouter or Concentrate and your own supported model.
+- Choose OpenRouter, Concentrate or Vercel AI Gateway and your own supported model.
 - Try a sample site without an API key.
 
 The editor is one PHP file. Your published website can contain multiple pages,

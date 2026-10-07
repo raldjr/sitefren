@@ -9,7 +9,7 @@
  * No Composer, database, shell commands, or external frontend dependencies.
  *
  * Hosting integration (optional, set in your account's environment):
- * POCKET_PROVIDER=openrouter|concentrate
+ * POCKET_PROVIDER=openrouter|concentrate|vercel
  * POCKET_API_KEY=<unique customer key>
  * POCKET_MODEL=<provider model ID>
  * POCKET_AI_TIMEOUT=180 (30–300 seconds; does not override hosting hard limits)
@@ -5955,9 +5955,51 @@ function ps_config(array $state): array {
 function ps_ai_timeout(array $config): int {
     return $config['timeout'] ?? 180;
 }
+/**
+ * Supported AI providers. To add a provider, add one entry here.
+ * 'api' names the request format: 'chat' for OpenAI Chat Completions or
+ * 'responses' for the OpenAI Responses API. 'extra_payload' is merged into
+ * every generation request for that provider. The optional 'model_filter'
+ * keeps catalog rows with a matching 'type' and 'tags' entry.
+ */
+function ps_providers(): array {
+    return [
+        'openrouter' => [
+            'name' => 'OpenRouter',
+            'api' => 'chat',
+            'models_url' => 'https://openrouter.ai/api/v1/models',
+            'generate_url' => 'https://openrouter.ai/api/v1/chat/completions',
+            // Only route to endpoints that honor the structured output schema.
+            'extra_payload' => ['provider' => ['require_parameters' => true]],
+        ],
+        'concentrate' => [
+            'name' => 'Concentrate',
+            'api' => 'responses',
+            'models_url' => 'https://api.concentrate.ai/v1/models/',
+            'generate_url' => 'https://api.concentrate.ai/v1/responses',
+            'extra_payload' => [],
+        ],
+        'vercel' => [
+            'name' => 'Vercel AI Gateway',
+            'api' => 'chat',
+            'models_url' => 'https://ai-gateway.vercel.sh/v1/models',
+            'generate_url' => 'https://ai-gateway.vercel.sh/v1/chat/completions',
+            'extra_payload' => [],
+            // The catalog also lists image, video and embedding models.
+            'model_filter' => ['type' => 'language', 'tag' => 'structured-output'],
+        ],
+    ];
+}
+function ps_provider(string $id): array {
+    $provider = ps_providers()[$id] ?? null;
+    if ($provider === null) {
+        ps_fail('Choose a supported AI provider.');
+    }
+    return $provider;
+}
 function ps_validate_config(array $config): void {
-    if (!in_array($config['provider'], ['openrouter', 'concentrate'], true)) {
-        ps_fail('Choose OpenRouter or Concentrate.');
+    if (!is_string($config['provider']) || !isset(ps_providers()[$config['provider']])) {
+        ps_fail('Choose a supported AI provider.');
     }
     if (
         !is_string($config['model']) ||
@@ -6249,31 +6291,35 @@ function ps_provider_payload(
         $context['selected_element'] = ps_selection_context($state, $selection);
     }
     $format = ['name' => 'sitefren_edit', 'strict' => true, 'schema' => ps_edit_schema()];
-    if ($config['provider'] === 'openrouter') {
-        return [
+    $provider = ps_provider($config['provider']);
+    $projectJson = 'CURRENT PROJECT JSON: ' . ps_json($context);
+    if ($provider['api'] === 'chat') {
+        $payload = [
             'model' => $config['model'],
             'messages' => [
                 ['role' => 'system', 'content' => ps_system_prompt()],
-                ['role' => 'user', 'content' => 'CURRENT PROJECT JSON: ' . ps_json($context)],
+                ['role' => 'user', 'content' => $projectJson],
             ],
             'response_format' => ['type' => 'json_schema', 'json_schema' => $format],
-            'provider' => ['require_parameters' => true],
             'max_tokens' => PS_OUTPUT_TOKENS,
             'stream' => false,
         ];
+    } else {
+        $payload = [
+            'model' => $config['model'],
+            'instructions' => ps_system_prompt(),
+            'input' => $projectJson,
+            'text' => ['format' => ['type' => 'json_schema'] + $format],
+            'max_output_tokens' => PS_OUTPUT_TOKENS,
+            'stream' => false,
+        ];
     }
-    return [
-        'model' => $config['model'],
-        'instructions' => ps_system_prompt(),
-        'input' => 'CURRENT PROJECT JSON: ' . ps_json($context),
-        'text' => ['format' => ['type' => 'json_schema'] + $format],
-        'max_output_tokens' => PS_OUTPUT_TOKENS,
-        'stream' => false,
-    ];
+    return $payload + $provider['extra_payload'];
 }
 function ps_parse_provider(string $provider, array $response): array {
     $GLOBALS['ps_transport']['response_stage'] = 'invalid_response';
-    $outputTokens = $provider === 'openrouter'
+    $api = ps_provider($provider)['api'];
+    $outputTokens = $api === 'chat'
         ? ($response['usage']['completion_tokens'] ?? null)
         : ($response['usage']['output_tokens'] ?? null);
     $GLOBALS['ps_transport']['output_token_limit'] = PS_OUTPUT_TOKENS;
@@ -6281,7 +6327,7 @@ function ps_parse_provider(string $provider, array $response): array {
         $GLOBALS['ps_transport']['output_tokens'] = $outputTokens;
     }
     $atOutputLimit = is_int($outputTokens) && $outputTokens >= PS_OUTPUT_TOKENS;
-    if ($provider === 'openrouter') {
+    if ($api === 'chat') {
         if (($response['choices'][0]['finish_reason'] ?? '') === 'length') {
             $GLOBALS['ps_transport']['response_stage'] = 'output_limit';
             ps_fail(
@@ -6347,7 +6393,7 @@ function ps_parse_provider(string $provider, array $response): array {
     return $result;
 }
 function ps_provider_error(string $provider, int $status, string $body): string {
-    $name = $provider === 'concentrate' ? 'Concentrate' : 'OpenRouter';
+    $name = ps_provider($provider)['name'];
     $messages = [
         401 => 'The provider rejected this API key.',
         402 => 'The provider account needs credits.',
@@ -6552,13 +6598,8 @@ function ps_provider_http(array $config, ?array $payload): array {
         ps_fail('Ask your host to enable the PHP cURL extension.', 503);
     }
     $catalog = $payload === null;
-    $url = $catalog
-        ? ($config['provider'] === 'openrouter'
-            ? 'https://openrouter.ai/api/v1/models'
-            : 'https://api.concentrate.ai/v1/models/')
-        : ($config['provider'] === 'openrouter'
-            ? 'https://openrouter.ai/api/v1/chat/completions'
-            : 'https://api.concentrate.ai/v1/responses');
+    $provider = ps_provider($config['provider']);
+    $url = $catalog ? $provider['models_url'] : $provider['generate_url'];
     $curl = curl_init($url);
     $body = '';
     $headers = ['Accept: application/json'];
@@ -6667,7 +6708,16 @@ function ps_provider_http(array $config, ?array $payload): array {
     }
     return $response;
 }
-function ps_model_choices(array $response): array {
+function ps_model_matches_filter(array $row, array $filter): bool {
+    if (isset($filter['type']) && ($row['type'] ?? null) !== $filter['type']) {
+        return false;
+    }
+    if (isset($filter['tag']) && !in_array($filter['tag'], (array) ($row['tags'] ?? []), true)) {
+        return false;
+    }
+    return true;
+}
+function ps_model_choices(array $response, array $filter = []): array {
     $rows =
         $response['data'] ?? ($response['models'] ?? (array_is_list($response) ? $response : []));
     if (!is_array($rows)) {
@@ -6687,8 +6737,11 @@ function ps_model_choices(array $response): array {
         ) {
             continue;
         }
-        $modalities = $row['architecture']['output_modalities'] ?? null;
+        $modalities = $row['architecture']['output_modalities'] ?? ($row['modalities']['output'] ?? null);
         if (is_array($modalities) && !in_array('text', $modalities, true)) {
+            continue;
+        }
+        if (!ps_model_matches_filter($row, $filter)) {
             continue;
         }
         $name = $row['name'] ?? ($row['display_name'] ?? $id);
@@ -7378,7 +7431,7 @@ if (isset($_GET['action'])) {
             $provider = $input['provider'] ?? '';
             if (
                 !is_string($provider) ||
-                !in_array($provider, ['openrouter', 'concentrate'], true)
+                !isset(ps_providers()[$provider])
             ) {
                 ps_fail('Choose a supported provider.');
             }
@@ -7394,7 +7447,7 @@ if (isset($_GET['action'])) {
             );
             ps_reply([
                 'provider' => $provider,
-                'models' => ps_model_choices($catalog),
+                'models' => ps_model_choices($catalog, ps_provider($provider)['model_filter'] ?? []),
                 'partial' => !empty($catalog['has_more']),
             ]);
         }
@@ -10089,8 +10142,9 @@ try {
         </p>
         <label for="provider">AI provider</label
         ><select id="provider">
-          <option value="openrouter">OpenRouter</option>
-          <option value="concentrate">Concentrate</option></select
+          <?php foreach (ps_providers() as $id => $provider): ?>
+          <option value="<?= htmlspecialchars($id) ?>"><?= htmlspecialchars($provider['name']) ?></option>
+          <?php endforeach; ?></select
         ><label for="apiKey">API key</label
         ><input
           id="apiKey"
@@ -10506,6 +10560,11 @@ try {
         if (className) el.className = className;
         return el;
       }
+      // Provider names come from the Settings list, which the server builds from ps_providers().
+      function providerName(id) {
+        const option = [...byId('provider').options].find((item) => item.value === id);
+        return option ? option.textContent : 'your AI provider';
+      }
       function render() {
         if (!state) return;
         syncSelection();
@@ -10543,7 +10602,7 @@ try {
         }
         const connected = !!(state.config.has_key && state.config.model);
         byId('providerStatus').textContent = connected
-          ? `Connected to ${state.config.provider === 'openrouter' ? 'OpenRouter' : 'Concentrate'}`
+          ? `Connected to ${providerName(state.config.provider)}`
           : 'Connect your AI provider';
         byId('providerStatus').classList.toggle('connected', connected);
         const publishState = state.published_at ? (state.dirty ? 'changes' : 'published') : 'draft';
