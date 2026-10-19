@@ -57,20 +57,26 @@ try {
     rejects(fn()=>ps_selection_context($s,array_replace($selection,['path'=>'missing.html'])),'Reject selection from an unmanaged page');
     rejects(fn()=>ps_selection_context($s,array_replace($selection,['selector'=>'body, *'])),'Reject arbitrary selector expressions');
     rejects(fn()=>ps_selection_context($s,array_replace($selection,['html'=>str_repeat('a',12001)])),'Bound selected HTML before a provider request');
-    foreach(['openrouter','concentrate'] as $provider){
+    foreach(array_keys(ps_providers()) as $provider){
         $payload=ps_provider_payload(['provider'=>$provider,'api_key'=>'fixture-key','model'=>'fixture-model'],$s,'Make this red',$selection);
-        $input=$provider==='concentrate'?$payload['input']:$payload['messages'][1]['content'];
+        $input=ps_provider($provider)['api']==='responses'?$payload['input']:$payload['messages'][1]['content'];
         $context=json_decode(substr($input,strlen('CURRENT PROJECT JSON: ')),true);
         check($context['selected_element']===$selection && $context['request']==='Make this red',$provider.' receives the actual selected element and request');
     }
-    foreach (['openrouter', 'concentrate'] as $provider) {
+    foreach (array_keys(ps_providers()) as $provider) {
         $payload = ps_provider_payload(['provider'=>$provider,'api_key'=>'fixture-key','model'=>'fixture-model'],$s,'Build a website');
-        $format = $provider === 'openrouter' ? $payload['response_format']['json_schema'] : $payload['text']['format'];
+        $format = ps_provider($provider)['api'] === 'chat' ? $payload['response_format']['json_schema'] : $payload['text']['format'];
         check($format['strict'] === true && $format['schema'] === ps_edit_schema(), $provider.' requests the complete strict edit schema');
     }
+    $payload = ps_provider_payload(['provider'=>'concentrate','api_key'=>'fixture-key','model'=>'fixture-model'],$s,'Build a website');
     check($payload['text']['format']['type'] === 'json_schema', 'Concentrate uses Responses API structured output');
     $payload = ps_provider_payload(['provider'=>'openrouter','api_key'=>'fixture-key','model'=>'fixture-model'],$s,'Build');
     check($payload['provider']['require_parameters'] === true, 'OpenRouter requires a route that accepts structured output');
+    $payload = ps_provider_payload(['provider'=>'vercel','api_key'=>'fixture-key','model'=>'fixture-model'],$s,'Build');
+    check(!isset($payload['provider']) && $payload['response_format']['type'] === 'json_schema', 'Vercel AI Gateway uses Chat Completions structured output without OpenRouter routing fields');
+    foreach (ps_providers() as $id => $entry) {
+        check(in_array($entry['api'], ['chat', 'responses'], true) && str_starts_with($entry['models_url'], 'https://') && str_starts_with($entry['generate_url'], 'https://') && $entry['name'] !== '' && is_array($entry['extra_payload']), $id.' has a complete provider entry');
+    }
     $invalid = ['choices'=>[['finish_reason'=>'stop','message'=>['content'=>'<html>Not JSON</html>']]]];
     rejects(fn()=>ps_parse_provider('openrouter',$invalid),'Plain HTML cannot bypass edit validation');
     check($GLOBALS['ps_transport']['response_stage'] === 'invalid_json' && isset($GLOBALS['ps_transport']['json_error_code']), 'Malformed output retains a safe parser diagnosis');
@@ -90,7 +96,7 @@ try {
     $cutoff['usage']['output_tokens']=PS_OUTPUT_TOKENS;
     $cutoff['output'][0]['content'][0]['text']=ps_json($validEdit);
     check(ps_parse_provider('concentrate',$cutoff)===$validEdit, 'A valid complete edit at the token cap is still accepted');
-    foreach (['openrouter','concentrate'] as $provider) {
+    foreach (array_keys(ps_providers()) as $provider) {
         $payload=ps_provider_payload(['provider'=>$provider,'api_key'=>'fixture-key','model'=>'fixture-model'],$s,'Build');
         check(($payload['max_tokens'] ?? $payload['max_output_tokens'])===16000, $provider.' requests the larger output allowance');
     }
@@ -129,7 +135,7 @@ try {
     rejects(fn()=>ps_check_revision($s,['revision'=>0]),'Reject stale browser revisions');
     $pending=$s; $pending['pending']=['id'=>'job','expires'=>time()+60];
     rejects(fn()=>ps_check_revision($pending,['revision'=>$pending['revision']]),'Reject a competing generation or edit');
-    foreach(['openrouter','concentrate'] as $provider){
+    foreach(array_keys(ps_providers()) as $provider){
         $config=['provider'=>$provider,'api_key'=>'fixture-not-a-real-key','model'=>'fixture-model'];
         $payload=ps_provider_payload($config,$s,'Make the title warmer');
         check(!str_contains(ps_json($payload),$config['api_key']),$provider.' excludes the credential from model context');
@@ -137,7 +143,7 @@ try {
         $result=ps_generate($config,$s,'Add a contact page',function($actual,$request)use($provider){
             if($actual!==$provider||$request['model']!=='fixture-model')throw new RuntimeException('Wrong adapter');
             $text=ps_json(['message'=>'Added contact','files'=>[['path'=>'contact.html','content'=>'<!doctype html><h1>Contact</h1>']],'delete'=>[]]);
-            return $provider==='openrouter'?['choices'=>[['finish_reason'=>'stop','message'=>['content'=>$text]]]]:['status'=>'completed','output'=>[['type'=>'message','content'=>[['type'=>'output_text','text'=>$text]]]]];
+            return ps_provider($provider)['api']==='chat'?['choices'=>[['finish_reason'=>'stop','message'=>['content'=>$text]]]]:['status'=>'completed','output'=>[['type'=>'message','content'=>[['type'=>'output_text','text'=>$text]]]]];
         });
         check($result['files'][0]['path']==='contact.html',$provider.' adapter parses an editable response');
     }
@@ -161,6 +167,9 @@ try {
     check(array_column($choices,'id')===['model-one','model-two','~vendor/latest'],'Model picker accepts provider IDs and excludes batch-only, image-only, and malformed entries');
     check(!str_contains(ps_json($choices),'internal-id'),'Model picker prefers the public slug over internal identifiers');
     rejects(fn()=>ps_model_choices(['data'=>[]]),'An empty model catalog has an actionable failure');
+    $gatewayRows=['data'=>[['id'=>'vendor/chat','name'=>'Chat','type'=>'language','tags'=>['structured-output'],'modalities'=>['output'=>['text']]],['id'=>'vendor/plain','type'=>'language','tags'=>['tool-use']],['id'=>'vendor/image','type'=>'image','tags'=>['structured-output']],['id'=>'vendor/embed','type'=>'embedding']]];
+    check(array_column(ps_model_choices($gatewayRows,ps_provider('vercel')['model_filter']),'id')===['vendor/chat'],'Vercel AI Gateway picker keeps only language models with structured output');
+    check(count(ps_model_choices(['data'=>[['id'=>'concentrate-model','type'=>'model']]]))===1,'Providers without a model filter keep their catalog rows');
     $s['password_hash']=password_hash('example-passphrase-only',PASSWORD_DEFAULT); $s['setup_code']='';
     $s['config']['api_key']='private-fixture-key';
     $_SESSION=['auth'=>$s['auth_version'],'seen'=>time(),'csrf'=>'test-csrf'];

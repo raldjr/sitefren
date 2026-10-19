@@ -1,5 +1,20 @@
 # Changes
 
+## 0.3.0 — October 19, 2026
+
+- Redesign the editor: a narrow rail for views, Help, Settings and account;
+  chat beside a browser-style preview with Publish as the main action.
+- Add light and dark themes. They follow the device by default, and
+  Settings → Appearance remembers a fixed choice. Remove orange from the
+  icon, manifest, offline page, selection outlines and sample site.
+- On phones, keep one compact bar in the Editor view (page picker, Edit,
+  Publish and a menu) so the site preview fills about 82% of a 390×844
+  screen. Save status moves into the header; credits and the version move
+  to Settings → About.
+- Add Vercel AI Gateway as a provider. Its model picker lists only language
+  models that support structured output.
+- Fix an intermittent blank preview when reopening the phone Editor view.
+
 ## 0.2.5 — September 8, 2026
 
 - Restore side-by-side chat and website editing on desktop, with the original

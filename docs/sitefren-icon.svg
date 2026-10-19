@@ -1,17 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
-  <title id="title">Sitefren smiling browser</title>
-  <style>
-    .brand { fill: #CC3D00; }
-    .window { fill: #FFFFFF; }
-  </style>
-  <rect class="brand" width="512" height="512" rx="88"/>
-  <rect class="window" x="74" y="86" width="364" height="328" rx="40"/>
-  <g class="brand">
-    <circle cx="132" cy="139" r="22"/>
-    <circle cx="191" cy="139" r="22"/>
-    <rect x="74" y="179" width="364" height="20"/>
-    <circle cx="186" cy="270" r="26"/>
-    <circle cx="326" cy="270" r="26"/>
-    <path d="M186 317 C222 355 290 355 326 317 A16 16 0 0 1 349 339 C301 391 211 391 163 339 A16 16 0 0 1 186 317Z"/>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><style>.mark-tile,.mark-face{fill:#18181b}.mark-window{fill:#ffffff}</style><rect class="mark-tile" width="512" height="512" rx="112"/><rect class="mark-window" x="80" y="92" width="352" height="320" rx="44"/><g class="mark-face"><circle cx="138" cy="146" r="20"/><circle cx="194" cy="146" r="20"/><rect x="80" y="184" width="352" height="18"/><circle cx="190" cy="272" r="26"/><circle cx="322" cy="272" r="26"/><path d="M190 318c34 36 98 36 132 0a16 16 0 0 1 23 22c-47 50-131 50-178 0a16 16 0 0 1 23-22z"/></g></svg>

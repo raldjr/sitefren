@@ -7,7 +7,7 @@ Built by **Raul Aldrete Jr.** for [Sheepdog Host](https://sheepdoghost.com).
 Upload one PHP file. Describe your website. Preview it. Publish real HTML, CSS,
 and JavaScript on the hosting account you already own.
 
-Sitefren is an **Alpha 0.2.5** application for small static websites, licensed under AGPL-3.0-only.
+Sitefren is an **Alpha 0.3.0** application for small static websites, licensed under AGPL-3.0-only.
 
 **One file to upload is a project requirement.** The customer uploads
 `sitefren.php`; the editor creates its own private state and published site files.
@@ -71,8 +71,8 @@ so an existing user may need to sign in again but does not repeat setup.
 - One uploadable PHP application, with an embedded interface and no CDN assets.
 - Owner-verified setup, password sign-in, session expiry, CSRF protection,
   sign-in cooldowns, and sign-out.
-- OpenRouter and Concentrate adapters with exact model-ID selection and a
-  provider-catalog picker.
+- OpenRouter, Concentrate and Vercel AI Gateway adapters with exact model-ID
+  selection and a provider-catalog picker.
 - Configurable AI wait limits and browser progress heartbeats during generation.
 - Chat-based creation and incremental edits of the managed site's files.
 - Desktop/mobile preview and navigation between local HTML pages.
@@ -107,6 +107,7 @@ The adapters use:
 | --- | --- | --- |
 | [OpenRouter](https://openrouter.ai/docs/quickstart) | `https://openrouter.ai/api/v1/chat/completions` | Chat messages |
 | [Concentrate](https://concentrate.ai/docs/api-reference/introduction) | `https://api.concentrate.ai/v1/responses` | Responses input and instructions |
+| [Vercel AI Gateway](https://vercel.com/docs/ai-gateway/sdks-and-apis/openai-chat-completions) | `https://ai-gateway.vercel.sh/v1/chat/completions` | Chat messages |
 
 Each design request sends the managed text files, uploaded image **paths**, the
 last eight conversation messages, and your new instruction. Image bytes are
@@ -155,11 +156,18 @@ AI how to use it, review the draft, and Publish when ready.
 
 ## Focused workspaces and home-screen app
 
-On desktop, chat and the website editor sit side by side. On phones, use
-**Chat** and **Editor** to switch views. Resizing preserves unsent prompts and
+On desktop, a narrow rail on the left switches between Preview, Files, Images
+and History and holds Help, Settings and your account. Chat sits beside a
+browser-style preview whose toolbar holds the page picker, Edit, Select for AI
+and Publish. On phones, use **Chat** and **Editor** to switch views; the Editor
+view keeps one compact bar with the page picker, Edit, Publish and a menu for
+Select for AI, the other views and Help. Resizing preserves unsent prompts and
 unsaved code edits. A completed generation opens Editor.
 On phones, use **Continue in Chat** after selecting a page element to request an AI change.
-Request details and Sign out are available from the header’s **More options** menu. During direct editing,
+Request details, Sign out and the theme choice are in the **Account** menu.
+Light and dark themes follow your device by default; **Settings → Appearance**
+remembers a fixed choice on that browser. Settings → About shows the version and
+credits. During direct editing,
 inactive navigation collapses and Save/Cancel stay above the preview. Touch
 controls are larger, form text avoids automatic zoom, and floating panels adjust
 to the visible viewport when the keyboard opens.
@@ -296,7 +304,7 @@ hosting installer can set these environment variables before launching PHP:
 
 | Variable | Purpose |
 | --- | --- |
-| `POCKET_PROVIDER` | `openrouter` or `concentrate`; locks the provider setting |
+| `POCKET_PROVIDER` | `openrouter`, `concentrate` or `vercel`; locks the provider setting |
 | `POCKET_API_KEY` | A unique customer-scoped provider key; locks the key setting |
 | `POCKET_MODEL` | Exact provider model ID; locks the model setting |
 | `POCKET_AI_TIMEOUT` | Integer from 30 to 300 seconds; locks the AI wait limit |
@@ -436,15 +444,18 @@ this application does not edit .htaccess or override custom index routing.
 
 Version 0.1.5 requests a strict JSON edit schema using Concentrate `text.format`
 and OpenRouter `response_format`. OpenRouter requires a compatible route with
-`require_parameters`. Your selected model/route must support structured output;
+`require_parameters`. Vercel AI Gateway uses the same Chat Completions
+`response_format`, and its model picker lists only language models tagged
+`structured-output`. Your selected model/route must support structured output;
 there is no automatic retry or fallback to another model or retention policy.
 The existing file-path, size, content, revision and publish checks still apply.
 Request details distinguish invalid JSON, incomplete output, reported output
 limits and refusals, without saving raw model responses. This improves the
 request contract but does not guarantee every live model/provider will comply.
 
-References: [Concentrate structured output](https://concentrate.ai/docs/api-reference/endpoint/structured-output)
-and [OpenRouter structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs).
+References: [Concentrate structured output](https://concentrate.ai/docs/api-reference/endpoint/structured-output),
+[OpenRouter structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs),
+and [Vercel AI Gateway structured outputs](https://vercel.com/docs/ai-gateway/sdks-and-apis/openai-chat-completions/structured-outputs).
 
 ## Output allowance
 

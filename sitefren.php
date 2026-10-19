@@ -1,6 +1,6 @@
 <?php
 /**
- * Sitefren 0.2.5 — an uploadable AI editor for small static websites.
+ * Sitefren 0.3.0 — an uploadable AI editor for small static websites.
  * SPDX-License-Identifier: AGPL-3.0-only
  * Copyright (c) 2026 Raul Aldrete Jr. and contributors
  * Built by Raul Aldrete Jr. for Sheepdog Host.
@@ -9,7 +9,7 @@
  * No Composer, database, shell commands, or external frontend dependencies.
  *
  * Hosting integration (optional, set in your account's environment):
- * POCKET_PROVIDER=openrouter|concentrate
+ * POCKET_PROVIDER=openrouter|concentrate|vercel
  * POCKET_API_KEY=<unique customer key>
  * POCKET_MODEL=<provider model ID>
  * POCKET_AI_TIMEOUT=180 (30–300 seconds; does not override hosting hard limits)
@@ -692,7 +692,7 @@
  */
 declare(strict_types=1);
 
-const PS_VERSION = '0.2.5';
+const PS_VERSION = '0.3.0';
 const PS_UPDATE_PUBLIC_KEY = 'TthJkmF58DxCfaw/0N6iRLhORlImuMT3brLGxKJV7jM=';
 // Optional embedded sponsor artwork (data:image/...;base64,...) preserves one-file delivery.
 const PS_SPONSOR_IMAGE = '';
@@ -5894,10 +5894,10 @@ function ps_ensure_homepage(array &$state): void {
     <title>Coming soon</title>
     <style>
       body { margin: 0; min-height: 100vh; display: grid; place-items: center;
-        background: #f7f5ee; color: #254b3b; font-family: system-ui, sans-serif; }
+        background: #fafafa; color: #18181b; font-family: system-ui, sans-serif; }
       main { padding: 2rem; text-align: center; }
       h1 { font-size: clamp(2rem, 6vw, 3.5rem); margin-bottom: 1rem; }
-      p { color: #59665d; line-height: 1.6; }
+      p { color: #52525b; line-height: 1.6; }
     </style>
   </head>
   <body>
@@ -5955,9 +5955,51 @@ function ps_config(array $state): array {
 function ps_ai_timeout(array $config): int {
     return $config['timeout'] ?? 180;
 }
+/**
+ * Supported AI providers. To add a provider, add one entry here.
+ * 'api' names the request format: 'chat' for OpenAI Chat Completions or
+ * 'responses' for the OpenAI Responses API. 'extra_payload' is merged into
+ * every generation request for that provider. The optional 'model_filter'
+ * keeps catalog rows with a matching 'type' and 'tags' entry.
+ */
+function ps_providers(): array {
+    return [
+        'openrouter' => [
+            'name' => 'OpenRouter',
+            'api' => 'chat',
+            'models_url' => 'https://openrouter.ai/api/v1/models',
+            'generate_url' => 'https://openrouter.ai/api/v1/chat/completions',
+            // Only route to endpoints that honor the structured output schema.
+            'extra_payload' => ['provider' => ['require_parameters' => true]],
+        ],
+        'concentrate' => [
+            'name' => 'Concentrate',
+            'api' => 'responses',
+            'models_url' => 'https://api.concentrate.ai/v1/models/',
+            'generate_url' => 'https://api.concentrate.ai/v1/responses',
+            'extra_payload' => [],
+        ],
+        'vercel' => [
+            'name' => 'Vercel AI Gateway',
+            'api' => 'chat',
+            'models_url' => 'https://ai-gateway.vercel.sh/v1/models',
+            'generate_url' => 'https://ai-gateway.vercel.sh/v1/chat/completions',
+            'extra_payload' => [],
+            // The catalog also lists image, video and embedding models.
+            'model_filter' => ['type' => 'language', 'tag' => 'structured-output'],
+        ],
+    ];
+}
+function ps_provider(string $id): array {
+    $provider = ps_providers()[$id] ?? null;
+    if ($provider === null) {
+        ps_fail('Choose a supported AI provider.');
+    }
+    return $provider;
+}
 function ps_validate_config(array $config): void {
-    if (!in_array($config['provider'], ['openrouter', 'concentrate'], true)) {
-        ps_fail('Choose OpenRouter or Concentrate.');
+    if (!is_string($config['provider']) || !isset(ps_providers()[$config['provider']])) {
+        ps_fail('Choose a supported AI provider.');
     }
     if (
         !is_string($config['model']) ||
@@ -6249,31 +6291,35 @@ function ps_provider_payload(
         $context['selected_element'] = ps_selection_context($state, $selection);
     }
     $format = ['name' => 'sitefren_edit', 'strict' => true, 'schema' => ps_edit_schema()];
-    if ($config['provider'] === 'openrouter') {
-        return [
+    $provider = ps_provider($config['provider']);
+    $projectJson = 'CURRENT PROJECT JSON: ' . ps_json($context);
+    if ($provider['api'] === 'chat') {
+        $payload = [
             'model' => $config['model'],
             'messages' => [
                 ['role' => 'system', 'content' => ps_system_prompt()],
-                ['role' => 'user', 'content' => 'CURRENT PROJECT JSON: ' . ps_json($context)],
+                ['role' => 'user', 'content' => $projectJson],
             ],
             'response_format' => ['type' => 'json_schema', 'json_schema' => $format],
-            'provider' => ['require_parameters' => true],
             'max_tokens' => PS_OUTPUT_TOKENS,
             'stream' => false,
         ];
+    } else {
+        $payload = [
+            'model' => $config['model'],
+            'instructions' => ps_system_prompt(),
+            'input' => $projectJson,
+            'text' => ['format' => ['type' => 'json_schema'] + $format],
+            'max_output_tokens' => PS_OUTPUT_TOKENS,
+            'stream' => false,
+        ];
     }
-    return [
-        'model' => $config['model'],
-        'instructions' => ps_system_prompt(),
-        'input' => 'CURRENT PROJECT JSON: ' . ps_json($context),
-        'text' => ['format' => ['type' => 'json_schema'] + $format],
-        'max_output_tokens' => PS_OUTPUT_TOKENS,
-        'stream' => false,
-    ];
+    return $payload + $provider['extra_payload'];
 }
 function ps_parse_provider(string $provider, array $response): array {
     $GLOBALS['ps_transport']['response_stage'] = 'invalid_response';
-    $outputTokens = $provider === 'openrouter'
+    $api = ps_provider($provider)['api'];
+    $outputTokens = $api === 'chat'
         ? ($response['usage']['completion_tokens'] ?? null)
         : ($response['usage']['output_tokens'] ?? null);
     $GLOBALS['ps_transport']['output_token_limit'] = PS_OUTPUT_TOKENS;
@@ -6281,7 +6327,7 @@ function ps_parse_provider(string $provider, array $response): array {
         $GLOBALS['ps_transport']['output_tokens'] = $outputTokens;
     }
     $atOutputLimit = is_int($outputTokens) && $outputTokens >= PS_OUTPUT_TOKENS;
-    if ($provider === 'openrouter') {
+    if ($api === 'chat') {
         if (($response['choices'][0]['finish_reason'] ?? '') === 'length') {
             $GLOBALS['ps_transport']['response_stage'] = 'output_limit';
             ps_fail(
@@ -6347,7 +6393,7 @@ function ps_parse_provider(string $provider, array $response): array {
     return $result;
 }
 function ps_provider_error(string $provider, int $status, string $body): string {
-    $name = $provider === 'concentrate' ? 'Concentrate' : 'OpenRouter';
+    $name = ps_provider($provider)['name'];
     $messages = [
         401 => 'The provider rejected this API key.',
         402 => 'The provider account needs credits.',
@@ -6552,13 +6598,8 @@ function ps_provider_http(array $config, ?array $payload): array {
         ps_fail('Ask your host to enable the PHP cURL extension.', 503);
     }
     $catalog = $payload === null;
-    $url = $catalog
-        ? ($config['provider'] === 'openrouter'
-            ? 'https://openrouter.ai/api/v1/models'
-            : 'https://api.concentrate.ai/v1/models/')
-        : ($config['provider'] === 'openrouter'
-            ? 'https://openrouter.ai/api/v1/chat/completions'
-            : 'https://api.concentrate.ai/v1/responses');
+    $provider = ps_provider($config['provider']);
+    $url = $catalog ? $provider['models_url'] : $provider['generate_url'];
     $curl = curl_init($url);
     $body = '';
     $headers = ['Accept: application/json'];
@@ -6667,7 +6708,16 @@ function ps_provider_http(array $config, ?array $payload): array {
     }
     return $response;
 }
-function ps_model_choices(array $response): array {
+function ps_model_matches_filter(array $row, array $filter): bool {
+    if (isset($filter['type']) && ($row['type'] ?? null) !== $filter['type']) {
+        return false;
+    }
+    if (isset($filter['tag']) && !in_array($filter['tag'], (array) ($row['tags'] ?? []), true)) {
+        return false;
+    }
+    return true;
+}
+function ps_model_choices(array $response, array $filter = []): array {
     $rows =
         $response['data'] ?? ($response['models'] ?? (array_is_list($response) ? $response : []));
     if (!is_array($rows)) {
@@ -6687,8 +6737,11 @@ function ps_model_choices(array $response): array {
         ) {
             continue;
         }
-        $modalities = $row['architecture']['output_modalities'] ?? null;
+        $modalities = $row['architecture']['output_modalities'] ?? ($row['modalities']['output'] ?? null);
         if (is_array($modalities) && !in_array('text', $modalities, true)) {
+            continue;
+        }
+        if (!ps_model_matches_filter($row, $filter)) {
             continue;
         }
         $name = $row['name'] ?? ($row['display_name'] ?? $id);
@@ -6746,7 +6799,7 @@ function ps_demo(): array {
                       }
                       body {
                         margin: 0;
-                        background: #f2eee5;
+                        background: #eef2f4;
                         color: #263d32;
                         font:
                           16px/1.6 system-ui,
@@ -6819,7 +6872,7 @@ function ps_demo(): array {
                       }
                       .art {
                         height: 380px;
-                        background: #d6dac8;
+                        background: #d3ddd8;
                         border-radius: 150px 150px 8px 8px;
                         position: relative;
                         overflow: hidden;
@@ -6829,13 +6882,13 @@ function ps_demo(): array {
                         width: 170px;
                         height: 170px;
                         border-radius: 50%;
-                        background: #efe4b9;
+                        background: #e3ecf3;
                         right: 25px;
                         top: 40px;
                       }
                       .vase {
                         position: absolute;
-                        background: #a16446;
+                        background: #3f6587;
                         width: 118px;
                         height: 160px;
                         border-radius: 25% 25% 40% 40%;
@@ -6862,7 +6915,7 @@ function ps_demo(): array {
                       .shelf {
                         position: absolute;
                         height: 45px;
-                        background: #b6b99f;
+                        background: #aab8b2;
                         bottom: 0;
                         width: 100%;
                       }
@@ -6945,7 +6998,7 @@ function ps_demo(): array {
                         <div
                           class="art"
                           role="img"
-                          aria-label="Illustration of a terracotta vase and green leaves in a sunlit arch"
+                          aria-label="Illustration of a blue vase and green leaves in a sunlit arch"
                         >
                           <div class="sun"></div>
                           <div class="leaf"></div>
@@ -7186,7 +7239,7 @@ function ps_pwa_manifest(string $file): array {
         'id' => $path, 'name' => 'Sitefren', 'short_name' => 'Sitefren',
         'description' => 'Your website, in your hands.',
         'start_url' => $path, 'scope' => $path, 'display' => 'standalone',
-        'background_color' => '#ffffff', 'theme_color' => '#c2410c',
+        'background_color' => '#ffffff', 'theme_color' => '#ffffff',
         'icons' => array_map(static fn(int $size): array => [
             'src' => $path . '?pwa=icon-' . $size, 'sizes' => $size . 'x' . $size,
             'type' => 'image/png', 'purpose' => 'any maskable',
@@ -7197,7 +7250,7 @@ function ps_pwa_worker(): string {
     return <<<'JS'
 // Network-only editor: never cache project state, credentials, or editor responses.
 const editorPath = new URL(self.location.href).pathname;
-const offline = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#c2410c"><title>Sitefren · Offline</title><style>body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#fafafa;color:#18181b;font:16px/1.6 system-ui,sans-serif}main{max-width:360px;padding:32px}h1{font-size:28px;line-height:1.2}a{display:inline-block;background:#c2410c;color:white;padding:12px 20px;border-radius:8px;text-decoration:none}</style></head><body><main><p>Sitefren</p><h1>You're offline.</h1><p>Reconnect to open your editor. Your saved website and drafts are on your hosting account.</p><a href="">Try again</a></main></body></html>`;
+const offline = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#ffffff"><title>Sitefren · Offline</title><style>body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#fafafa;color:#18181b;font:16px/1.6 system-ui,sans-serif}main{max-width:360px;padding:32px}p{color:#52525b}h1{font-size:28px;line-height:1.2}a{display:inline-block;background:#18181b;color:#fafafa;padding:12px 20px;border-radius:999px;text-decoration:none;font-weight:600}a:focus-visible{outline:2px solid #2563eb;outline-offset:2px}@media (prefers-color-scheme:dark){body{background:#0d1117;color:#e6edf3}p{color:#9da5b0}a{background:#e6edf3;color:#0d1117}a:focus-visible{outline-color:#58a6ff}}</style></head><body><main><p>Sitefren</p><h1>You're offline.</h1><p>Reconnect to open your editor. Your saved website and drafts are on your hosting account.</p><a href="">Try again</a></main></body></html>`;
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', event => {
@@ -7235,11 +7288,60 @@ function ps_pwa_response(string $resource): never {
     }
     exit;
 }
+// The Sitefren mark is a smiling browser window. Shapes carry classes so the
+// editor stylesheet can color them with the active theme.
+function ps_brand_shapes(): string {
+    return '<rect class="mark-tile" width="512" height="512" rx="112"/>'
+        . '<rect class="mark-window" x="80" y="92" width="352" height="320" rx="44"/>'
+        . '<g class="mark-face">'
+        . '<circle cx="138" cy="146" r="20"/><circle cx="194" cy="146" r="20"/>'
+        . '<rect x="80" y="184" width="352" height="18"/>'
+        . '<circle cx="190" cy="272" r="26"/><circle cx="322" cy="272" r="26"/>'
+        . '<path d="M190 318c34 36 98 36 132 0a16 16 0 0 1 23 22c-47 50-131 50-178 0a16 16 0 0 1 23-22z"/>'
+        . '</g>';
+}
+function ps_brand_mark(): string {
+    return '<svg class="mark" viewBox="0 0 512 512" aria-hidden="true" focusable="false">'
+        . ps_brand_shapes() . '</svg>';
+}
+// The favicon stays static (no media queries) so it is also a valid upload-safe SVG.
+// Its white window keeps it readable on light and dark browser chrome.
+function ps_favicon_uri(): string {
+    $style = '<style>.mark-tile,.mark-face{fill:#18181b}.mark-window{fill:#ffffff}</style>';
+    $svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">' . $style . ps_brand_shapes() . '</svg>';
+    return 'data:image/svg+xml;base64,' . base64_encode($svg);
+}
+// Outline interface icons drawn with the current text color.
+function ps_icon(string $name): string {
+    $paths = match ($name) {
+        'preview' => '<path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.75"/>',
+        'files' => '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="m10 12.5-2 2 2 2"/><path d="m14 12.5 2 2-2 2"/>',
+        'images' => '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.75"/><path d="m21 15-5-5L5 21"/>',
+        'history' => '<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5"/><path d="M3.5 3.5v5h5"/><path d="M12 7.5V12l3 2"/>',
+        'help' => '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 0 1 4.8.8c0 1.7-2.4 2.2-2.4 3.7"/><path d="M12 17h.01"/>',
+        'settings' => '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+        'account' => '<circle cx="12" cy="8.5" r="3.75"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/>',
+        'chat' => '<path d="M20.5 12a8.5 8.5 0 0 1-12.4 7.5L3.5 20.5l1-4.4A8.5 8.5 0 1 1 20.5 12z"/>',
+        'editor' => '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/><path d="M6.5 6.5h.01M9 6.5h.01"/>',
+        'desktop' => '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+        'mobile' => '<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 17.5h2"/>',
+        'plus' => '<path d="M12 5v14M5 12h14"/>',
+        'send' => '<path d="M12 19V5M6 11l6-6 6 6"/>',
+        'edit' => '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
+        'select' => '<path d="M5 4l6 15 2.2-6.3L19.5 10.5z"/>',
+        'publish' => '<path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>',
+        'globe' => '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.5 5.3 3.5 8.5s-1.1 6.1-3.5 8.5c-2.4-2.4-3.5-5.3-3.5-8.5s1.1-6.1 3.5-8.5z"/>',
+        'chevron' => '<path d="m7 10 5 5 5-5"/>',
+        'menu' => '<path d="M4 7h16M4 12h16M4 17h16"/>',
+        default => '',
+    };
+    return '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' . $paths . '</svg>';
+}
 function ps_pwa_icon(int $size): string {
     return base64_decode(match ($size) {
-        180 => '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',
-        192 => 'iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAAQAElEQVR4AexdB3wUdRb+kk0CCekJkERaCMSAYCLqqaeionIHYu9KBz3Usx9FAQGFoCienAVUQE4Q24EiKofYC4eeSDgC0ksIkBASUklPbt5Kctzs7O5MslP+O49fhp35l/e+9733bZndmX9gI/9jBmzMQCD4HzNgYwZYADZOPocOsAC4CmzNAAvA1unn4G0sAE4+M8BvgbgGbM4AvwLYvADsHj4LwO4VYPP4WQA2LwC7h88CsGMFcMzNDLAAmqngHTsywAKwY9Y55mYGWADNVPCOHRlgAdgx6xxzMwMsgGYqeMcODMhjZAHIGeFjWzHAArBVujlYOQMsADkjfGwrBlgAtko3BytngAUgZ4SPbcWAjQRgq7xysCoZYAGoJIqH+ScDwgig9OfPcei1ydg3czh2PnwFtg7rjaxB0djYP4A3EzmgHFAuKCeUm0OvT0HZxi+EUYtlBdBQdQLHv1mBfU8NdRb6rkeuRN6yTBR9ttRJcNWBX1FfUSIM0f4KlHJAuaCip9zkLZ3lfILKGhKP/bNHo2T9x6BcWjV+ywmgobpSKvSn8Z8bTsPeqTehaN1bXOhWrR4PuOpLC1G45g3snnS1lMtOyFs+B5RbD1NM6bKMABrr61Cw6lVk39ZDeqvzGOrLi00hxC+dmhxUfflxHFow0ZnbY6tfB+XaZEjN7i0hgNrCI9hx30XImTsOtYWHm8Hxjn8xQLk98OzdzlzXSjm3QnSmC6B86wZsG9MPFdt+tAIfjMEABijXlHPKvQHuPLowVQDHPl6Inff3R11RnkeQ3Ol/DFDOKfdUA2ZGZ4oAGmprsP+ZsTgw5y401tWaGT/7NpEByj3VANUC1YQZUEwRwLEPXkHhJ4vMiJd9WpABqoXCTxfrgsybUcMFUPLTWhx8+RFvuLjfZgzkvHA/SjasMTxqQwVQdXAn9j5xM9DYaHig7NDiDEinwffOuA1VOTsMBWqoAPbNHIaGE2WGBsjOxGGgoaIU+zNHGArYMAEUffEOTvz6k6HBsTPxGKBTpFQrRiE3RAANNdXInT/BqJjYj+AM0LfGVDNGhGGIAI6+91fUHj1oRDyn+OBdURmoyc8B1YwR+HUXQG1xAY4snWVELOzDjxg4siwTVDt6h6S7AOhnsg2V5XrHwfb9jAE6WUK1o3dYugug+LsP9Y6B7fspA0bUjq4CoK+3SzZ86qfp4bD0ZqDkxzWgGtLTj64CKP/lSz7vr2f23Nn2k3b6XoBqSM9w9BXA1g16YmfbNmDgxK4sXaPUVQC1/DNnXZNnB+N615CuAqDffNshSRyjfgzU5O3Xz7hkWVcBVB/RF7yEn//8nAG9a0hXAeitXqXcOyJiEXnOlYgfMhaJI6YiadR03lrBAXFIXBKnxK0S53q2aX0LpBWLrgKgK360Amrp+OiLrkPvJVuQ8Ukhej7/GbpOeB1JY55E4qhpvLWCA+KQuCROidvei7NAXLc0T1rn6f0lqq4C0BpsS8YHxSYgZdYHSMn8AKHd+7TEBM/RwEBoj3Qn18Q5ca9hqiWHCi2AkISuOH3eV4i++DpLkuvPoIjz1Be+QHB8ktBhCisAR1Qces5dh7Zd04ROgMjgQ7v1Rqr0BBQUFS9sGGIKwBGEHrNXo23nnsIS7y/A23ZOld4SfQhIORExJiEFEDdwKML7XCDjmw/NYiC874WgnJjlvzV+hRRA0sgnWhMzz9WBgcRhk3Wwqr9J4QQQ+bs/IiQxWX9m2IMmBtp06gHKjaZJFhgsnADo7ENLeHNeYPHLV8h/93kc/+p91LTgW+q64gLn/e7z334OJf/6BPWlRS2B4rdzWpobMwkRTgBhPTM08UWLM+TOn4hNV8Vi50MDkPvyo9g77RZsuTVZOr4c1Yf2eLVXW5iHvTNux+ZrOjjvd587fzx2TxwCWgTiwDNjUVdS6NWGHQZozY0VOBFOAI7waNW80eok2UPTkP/2HKC+zmVe2S9fYuvwM3BkyZNorKl26UdDA46ueAlbJRvHv3jHtR+NOPbJImTfeToK1yyBaTf8UkBmRpOW3JiBT8mncAIIDA5RikOxrfCzZV7vRtFYW+1cmKOhqsLFBi3kcGz1a6BlgFw6T2mg1VAKVi+0vQACgoJPYUWMXeEEoJZWen9O7/XVjK8tPIziHz5yGVqevR6Ve7e4tCs1VGT/gAq+8ZcSNZZu81sBlG3+VnpGblBNftmmr13GKrW5DDqloYKvgDuFDTF2/VcACgXtKSVKxa7U5tFGlquIPI3nPvMZ8FsBBMcmaGJXaXxwnDYb/vDrSE2kWWBwayH4rQC0npILVTi9GtYjQxO/Wn1qMs6DdWHAbwUQ0W8AQrv3VUVaQFAIOtzwZ5excYNGwBEe49Ku1EDP/rEDblXq4jYLM+C3AgiQTpcmT30LgW3beaW/07hnJLG4XkwTHJeIruNf9TofAYFInrIUjgh1YvFukEcYxYDfCoAIDE3pi9R5XyKkQxc6dNkCHMHodN9cdLjlIZe+poaYy25G9yffR2BoRFPT/z3SK0TKzBWIPOeK/2vnAzEY8GsBUAra9fodei/ehIQ7J6FdnwulQg6Xnu37Im7waKTNX4+Ot3pfryzm0pvQe9FGtL/uXoSl9gO9qoSlnYsONz6A3ks2Q8TfwBA3vAECC0B9+hyRsTjtT7OR9sr3OGttmVS0/0G3SYsQlnaOaiNtOvVEl0deRq+FG3HWZ+Xo9dpP6PzgPOnVpbNqGzzQegzYQgDWo50RWYUBFoBVMsE4TGGABWAK7ezUKgywAKySCcZhCgPCCWDX+EHY9IdIe28WjX/3hMGmFHFrnAongIbKCjRUlvFmQQ7qpdy0phjNmCucAMwgiX36LwMsAP/NLUemggEWgAqSeIj/MiCcAOhny+Hp/cGb9TgI65Guu1J87UA4AXR58G84/cVveLMgB52l3Pi6QPW2J5wA9CaE7duLARaAvfLN0coYYAHICOFDezHAArBXvjlaGQMCCUCGnA+ZAR8wwALwAYlsQlwGWADi5o6R+4ABFoAPSGQT4jLAAhA3d4zcBwywAHxAou4m2IFuDLAAdKOWDYvAAAtARZZofbGK7PXOhTSOrngRdNfo+vISFTONGVJfdtyJibAVrHoVhJUuHDLGu9heWACe8ldfj8OLp2PT4Bhsv/dC5Mwdh4PzHsDOBy9DltSWO38CGutqPVnQtY98574yHllXxTkxETbCSFg3DYpyLv0EKQZdQQhunAXgJoE1Rw9ixwOXSkU0A2ioVxjViPy3n8X2cReoWmhPwUCrmqoP7XH6zn/nOclOo7TJ/iTMhxdPc8ZQV5Qv6+TDJgZYAE1MyB4PzLkL5Vu+l7W6Hp7YuRH7Zo2QRKJ+NRpXKxpbGhokn8NBvr3NpBj2zR7lbZhl+/UGxgJQYLhg1QKU/rRWoUe5idYHy1s+R7lTh1byRe/z1Zou/XENCtcsUTvcVuNYAArpzn/vBYVWz03572uf49mim17p2T//3bluOt03H1n2tPtOG/ewAGTJrys5hurcXbJW74d1x/NRc2S/94GtHFF1cCcIo1YzFFNDdaXWaX4/ngUgS/GJ7T8DjS17P1++bYPMmu8PT+zOaplRKaaKbT+2bK4fz2IB+HFy5aE11lTJm2x/bGEBmJOb0B7aFsY7FaXWRfVOnat2vzU+WhObWnyijWMByDIWHJeAoJiOslbvhwEhoWjbOdX7wFaOIB+0Qo1WMxQTxaZ1nr+PZwEoZDjxzkkKrZ6bOt70ABBoAJ2SD6UVLT2jA1oSkzeb/tBvQMbEo4kWzYs8d6Bq4O16nYekMU+qHt/ageRL7RKw5Cvi7Cs8LgRIY+y6sQDcZL7b40tAK0C66W5uprcj3ae/DVqWtblR5x3ypXYJWFq/mJZw1RmSsOZZAG5SFxyXiIzVBUgaPQMIdCiMCkDH2/6CjE+PIyQxWaG/FU0qpoam9HX67nj7eGl0gLTJ/iTMiSOnIX1FLoKlzzWyXj48yQAL4CQRig8OBxJHPoGzpCJPe+UHdHl0Aej2f6nzvnIWX6d7n0VAULDiVCMayXene+Y4sRAmwkYYCSthTho9HZBiMAKLqD5YACoyFxgWgXZ9fo/21/4JHW68HxFnXSq9PYpSMdOYIY7wKCcmwkYYCSthNsa72F5YAGLnj9G3kgEWQCsJ5OliM8ACEDt/fofe6IBYAG4YryspxJ7JN2Dz1R1Alz/uefx6UJub4ZZpJoy7H7vWiZmw75lyI+rLiy2Dz2pAWAAKGanJO4Bto9JR/N0HUtEXOAuo+PsPsW10BqoP7lSYYY2mqpwdTowlP3zkxFxXUoDib1di28h01OTnWAOkxVCwAGQJoQvNd00agtpjh2Q9QG1BLrbf3x9Vubtd+sxuoOLfIWEjjHIsNUdzsGfqjaZewC/HZJVjFoAsE8e/fBdVe7Nlrf87pAvMd9x3Eaz02/qK7H8571pRd/zo/4DK9ug6h+JvVspa+ZAFIKuBsqxvZC2uh3T11/Zx5+PQa5NdOw1uOfTqY1Lx/x71pYVePZdt/tbrGLsNsJAArEF9cFyiaiB5yzKxdVgvVNBVZKpn+WZg2ebvkH1HT+S99bRqg1piU21U8IEsAFkCYy67Rdbi+bDqwHZsv/tc5My9F9WH93oe7INeeq+/f/Zo7JTe71dr/CwSO0BbbD6Aa3kTLABZikK790Hc4NGyVu+HBavmI/u2FOy4/1IUrVvufYKGEQ2V5Tj2yWLnjbC2Dk1D4Zo3NMz+bWj8VWPQxoALdn7zJs7/LACFXHWbtAjRF1+v0OO9qXzzN9j31J3Y9Mco6VXhHhR9tgyVHj5Uu7N4YucmqdCXYP/sUciSvos48MwY6YN3yy66j+5/A7pOXOjOla3bWQBu0p8yayXiBo100+u9ueFEKQpWLcC+mcOk8/B9sbF/ALaN6ecsaLrfqMu2aJoknKHYOuK3sb+O/W0s3dCqsabSu0M3I+KHjEXKzBVuermZBeChBro99gbo6isPQzR1Ve767Vn9yJIZznuONj/S8d+fRNG6t1C1z/0pWE3OpMGn3Z2JrhNel/b4zx0DLAB3zJxsTxwxFal/+xqOiJiTLdZ/CIqKd2JOGPqY9cGajJAFoCIBERmX4IwlWxBx1mUqRps7hK5l7k1YJczmIhHDOwtAZZ6C25+G1Hlfgt4WOSJiVc4yblhQVHvQdcI9567lSyA10M4C0EAWDaUPxn2W70D7a8fRoelbQEhbtL/+PhCm2CvvMB2PaAACRQNsBbxB0nvsLo/OR/pHR0GfERyRcYbDors9JI2difQPDqPLwy8J9RnlVLLM3mcBtCIDQdHtnWeJ0lceQven/oHoi65FQFBIKyx6nkrP9vRNdUrmKpz5jxwkDp/Mhe+ZMq+9LACvFHkfEBDSBjGX3IiUzA+RvirP+TkhZsCtUHNfIW/W6dUmbtAodJ/+rvM2Ld1nvCsJ7RpJaMHepnK/CgaEE0B9RamKsMwbQqdL46Qv0LpPPueZFQAABXJJREFUfwcZnxYhbcEGpyASh09B7OW3IyLjUoSnX6K40Vmm2IHDkDRqOuhmVr0WbkT66gJp/mLEDLgFgaHh5gWmwnNdcYGKUdYaIpwAaovyrMWgFzTtep/n/EY5aexTSJ62XDo//xVOf/FrxY3OMiVPeROJo6YhduBQhKX282LdWt2i5YbYE04AJ3ZlEW7eLMhA1YHtFkTlGZKJAvAMzF1v8XcfuuvidpMZEDE3wgmgYtsGVO7ZYnKq2b2cgfLs9S3+tarclpHHwgmAyMmdP4EeeLMQA4ctcHloS+gQUgClP/0TBatebUm8PEcHBo6+Pw9lWV/rYFl/k0IKgGjJeeHPKNGwmDXN4c33DJT+ex0OvvSw7w0bZFFYAaC+DnsmXY3Cf75pEFU+dOMnpgrXvYXdE68CGhuFjUhcAUiU002s9meOAF0kznc+kwgx6I+43j9L4v2pocLfbEtoATTlmy4S33JzV0kIo0AvyU3t/OhbBkp//hz7M0eCuC5c6x+vvH4hgKY00/Wzux4d6Lz+lq7B5S3Ap1zseuRK6S3n35vo9otHvxKAX2SEgzCUARaAoXSzM6sxoKsAeJ0qq6VbPDx6/wJWVwEExyaIxzgjthQDeteQvgLg9WktVUwiggnWuYb0FQC/AohYc5bCLPYrAAvAUsUkIpiQhG66wtb1FSC0Z8Yp4HmXGdDOQJjONaSrAKLOG8QXb2vPOc84yQCdAYo8f/DJI30edBWAIzwKEf0G6IOcrfo9A1EXXIXAYP1uM0ME6ioAchB98XX0wBszoJkBI2pHdwFEXXiN5sB5AjMQEBQMegXQm4lAvR2ExCch4Y6Jeruxtn1Gp5mBjrc8AkdYhOZ5WifoLgACRPepD2wXSbu8MQNeGQiKbo+EYY97HeeLAYYIgD4MJ97JizX4ImF2sJE49HE4DHrCNEQAlLQONz+EkER9v9QgP7yJzUBIQlfEG3jrecMEENimLZKnLgccQWJniNHrxkBAiFQj094B1YpuTmSGDRMA+Q3vcwG6jn+NdnmzCQNawkx+YjnCzzhfy5RWjzVUAIQ2fvAoJI6cRru8MQPNDFBNxPS/vvnYqB3DBUCBJY2e7rxjMu3zxgzE/mE4qCbMYMIUAVCgtNgcLTOEQNMgEAzeTGQgQPqyi9YxTp5s3oX2plYfLTTX87m1cERab9VFE+vCFq4p56kvfov4IWNNjddUAVDkkedcgV6vbwT/dJrYsMcWmnImei38xfAPvErs6igAJXfKbW2k7wfSXlmPTvc+B1oTS3kUt4rOAOW20z3PIm3BBrSRzvdbIR5LCICICGwTio63PYq+7+1D0tiZcIRHUzNvfsBAU+FTbjve/hfpPH+oZaIKtAySk0DoIgha/vPMlYeQMnOlc60sR7uok738IAoDjsg455m+lMxV6Pv+ATgL34KL/FlOAE0JDmwbhmjpvHDylKXIWFOM1L9+joRhkyVBDEPE2ZejbddeYGE0sWXeI+WAckE5iR04zJmjns+vQ8bHx0Bn+qIvugaUS/MQevYc6LnbOr1E8Gl3zUTylDedYjhj6TaQMM7+thG8mccB5YByQU9QlBvKEZ3YsE7leEYijAA8h2GxXoYjDAMsAGFSxUD1YIAFoAerbFMYBlgAwqSKgerBAAtAD1bZpjAMsACESZUYQEVDyQIQLWOM16cMsAB8SicbE40BFoBoGWO8PmWABeBTOtmYaAywAETLGOP1KQM+FIBPcbExZsAQBlgAhtDMTqzKAAvAqplhXIYwwAIwhGZ2YlUGWABWzQzjMoQBFoAvaGYbwjLAAhA2dQzcFwywAHzBItsQlgEWgLCpY+C+YIAF4AsW2YawDLAAhE2dNYCLjuK/AAAA//8jZg+vAAAABklEQVQDAHBAAUTFbfL6AAAAAElFTkSuQmCC',
-        512 => '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',
+        180 => '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',
+        192 => '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',
+        512 => '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AKUIAAAoRQAAQCkCAABKEQAAUIoAAIBSBAAAlCIAAKAUAQAApQgAAChFAABAKQIAAEoRAABQigAAgFIEAACUIgAAoBQBAAClCAAAKEUAAEApAgAAShEAAFCKAACAUgQAAJQiAACgFAEAAKUIAAAoRQAAQCkCAABKEQAAUIoAAIBSBAAAlCIAAKAUAQAApQgAABgr2kAAAAETSURBVChFAABAKQIAAEoRAABQigAAgFIEAACUIgAAoBQBAAClCAAAKEUAAEApAgAAShEAAFCKAACAUgQAAJQiAACgFAEAAKUIAAAoRQAAQCkCAABKEQAAUIoAAIBSBAAAlCIAAKAUAQAApQgAAChFAABAKQIAAEoRAABQigAAgFIEAACUIgAAoBQBAAClCAAAKEUAAEApAgAAShEAAFCKAACAUgQAAJQiAACgFAEAAKUIAAAoRQAAQCkCAABKEQAAUIoAAIBSBAAAlCIAAKAUAQAApQgAAChFAABAKQIAAEoRAABQigAAgFIEAACUIgAAoBQBAAClCAAAKEUAAEApAgAAShEAAFCKAACAUgQAAJT6/wAAAP//Sq4WlwAAAAZJREFUAwBvhw0Cav2eXwAAAABJRU5ErkJggg==',
         default => '',
     });
 }
@@ -7261,7 +7363,7 @@ if (isset($_GET['preview'])) {
     header(
         "Content-Security-Policy: sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
     );
-    echo '<!doctype html><html><head><meta charset="utf-8"><title>Website preview</title></head><body><script>addEventListener("message",function receive(e){if(e.source!==parent||e.data?.type!=="pocket-render"||typeof e.data.html!=="string")return;removeEventListener("message",receive);document.open();document.write(e.data.html);document.close()});</script></body></html>';
+    echo '<!doctype html><html><head><meta charset="utf-8"><title>Website preview</title></head><body><script>addEventListener("message",function receive(e){if(e.source!==parent||e.data?.type!=="pocket-render"||typeof e.data.html!=="string")return;removeEventListener("message",receive);document.open();document.write(e.data.html);document.close();parent.postMessage({type:"pocket-rendered"},"*")});</script></body></html>';
     exit();
 }
 header('X-Content-Type-Options: nosniff');
@@ -7329,7 +7431,7 @@ if (isset($_GET['action'])) {
             $provider = $input['provider'] ?? '';
             if (
                 !is_string($provider) ||
-                !in_array($provider, ['openrouter', 'concentrate'], true)
+                !isset(ps_providers()[$provider])
             ) {
                 ps_fail('Choose a supported provider.');
             }
@@ -7345,7 +7447,7 @@ if (isset($_GET['action'])) {
             );
             ps_reply([
                 'provider' => $provider,
-                'models' => ps_model_choices($catalog),
+                'models' => ps_model_choices($catalog, ps_provider($provider)['model_filter'] ?? []),
                 'partial' => !empty($catalog['has_more']),
             ]);
         }
@@ -7687,476 +7789,879 @@ try {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-    <meta name="color-scheme" content="light" />
-    <meta name="theme-color" content="#c2410c" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#ffffff" />
+    <script nonce="<?= htmlspecialchars($nonce, ENT_QUOTES) ?>">
+      // Apply the saved or system theme before the first paint so the page never flashes.
+      (function () {
+        var choice = 'system';
+        try {
+          choice = localStorage.getItem('sitefren-theme') || 'system';
+        } catch (error) {}
+        var dark = choice === 'dark' ||
+          (choice !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        document.querySelector('meta[name="theme-color"]').content = dark ? '#0d1117' : '#ffffff';
+      })();
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Sitefren" />
     <link rel="manifest" href="?pwa=manifest" />
     <link rel="apple-touch-icon" sizes="180x180" href="?pwa=icon-180" />
     <title>Sitefren · Your site, in your hands</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiByb2xlPSJpbWciIGFyaWEtbGFiZWxsZWRieT0idGl0bGUiPgogIDx0aXRsZSBpZD0idGl0bGUiPlNpdGVmcmVuIHNtaWxpbmcgYnJvd3NlcjwvdGl0bGU+CiAgPHN0eWxlPgogICAgLmJyYW5kIHsgZmlsbDogI0NDM0QwMDsgfQogICAgLndpbmRvdyB7IGZpbGw6ICNGRkZGRkY7IH0KICA8L3N0eWxlPgogIDxyZWN0IGNsYXNzPSJicmFuZCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHJ4PSI4OCIvPgogIDxyZWN0IGNsYXNzPSJ3aW5kb3ciIHg9Ijc0IiB5PSI4NiIgd2lkdGg9IjM2NCIgaGVpZ2h0PSIzMjgiIHJ4PSI0MCIvPgogIDxnIGNsYXNzPSJicmFuZCI+CiAgICA8Y2lyY2xlIGN4PSIxMzIiIGN5PSIxMzkiIHI9IjIyIi8+CiAgICA8Y2lyY2xlIGN4PSIxOTEiIGN5PSIxMzkiIHI9IjIyIi8+CiAgICA8cmVjdCB4PSI3NCIgeT0iMTc5IiB3aWR0aD0iMzY0IiBoZWlnaHQ9IjIwIi8+CiAgICA8Y2lyY2xlIGN4PSIxODYiIGN5PSIyNzAiIHI9IjI2Ii8+CiAgICA8Y2lyY2xlIGN4PSIzMjYiIGN5PSIyNzAiIHI9IjI2Ii8+CiAgICA8cGF0aCBkPSJNMTg2IDMxNyBDMjIyIDM1NSAyOTAgMzU1IDMyNiAzMTcgQTE2IDE2IDAgMCAxIDM0OSAzMzkgQzMwMSAzOTEgMjExIDM5MSAxNjMgMzM5IEExNiAxNiAwIDAgMSAxODYgMzE3WiIvPgogIDwvZz4KPC9zdmc+Cg==" />
+    <link rel="icon" type="image/svg+xml" href="<?= ps_favicon_uri() ?>" />
     <style nonce="<?= htmlspecialchars($nonce, ENT_QUOTES) ?>">
+      /* Design tokens. Every color in the editor comes from one of these. */
       :root {
-        --ink: #18181b;
-        --muted: #52525b;
-        --line: #e4e4e7;
-        --paper: #f4f4f5;
-        --brand: #c2410c;
-        --tint: #fff7ed;
-        --accent: #ffedd5;
-        --white: #fff;
-        --red: #9c3737;
+        color-scheme: light;
+        --surface-page: #fafafa;
+        --surface-panel: #ffffff;
+        --surface-raised: #f4f4f5;
+        --surface-overlay: #ffffff;
+        --surface-field: #ffffff;
+        --site-canvas: #ffffff;
+        --border: #e4e4e7;
+        --border-strong: #84848d;
+        --text: #18181b;
+        --text-secondary: #3f3f46;
+        --text-muted: #66666e;
+        --primary-bg: #18181b;
+        --primary-text: #fafafa;
+        --primary-hover: #3f3f46;
+        --accent: #2563eb;
+        --accent-soft: #eff4ff;
+        --focus-ring: #2563eb;
+        --selection: #2563eb;
+        --success: #15803d;
+        --success-soft: #ecfdf3;
+        --warning: #7a5e00;
+        --danger: #b91c1c;
+        --danger-soft: #fef2f2;
+        --mark-tile: #18181b;
+        --mark-window: #ffffff;
+        --shadow-sm: 0 1px 2px rgb(24 24 27 / 6%);
+        --shadow-lg: 0 16px 48px rgb(24 24 27 / 14%);
+        --backdrop: rgb(24 24 27 / 40%);
+        --radius-sm: 8px;
+        --radius-md: 12px;
+        --radius-lg: 16px;
+        --radius-pill: 999px;
+        --space-1: 4px;
+        --space-2: 8px;
+        --space-3: 12px;
+        --space-4: 16px;
+        --space-5: 24px;
+        --space-6: 32px;
+        --rail-width: 64px;
+        --chat-width: clamp(300px, 30vw, 420px);
+        --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
+      :root[data-theme='dark'] {
+        color-scheme: dark;
+        --surface-page: #0d1117;
+        --surface-panel: #161b22;
+        --surface-raised: #21262d;
+        --surface-overlay: #1c2128;
+        --surface-field: #0d1117;
+        --border: #30363d;
+        --border-strong: #7d8590;
+        --text: #e6edf3;
+        --text-secondary: #c9d1d9;
+        --text-muted: #9da5b0;
+        --primary-bg: #e6edf3;
+        --primary-text: #0d1117;
+        --primary-hover: #c9d1d9;
+        --accent: #58a6ff;
+        --accent-soft: #152238;
+        --focus-ring: #58a6ff;
+        --selection: #58a6ff;
+        --success: #3fb950;
+        --success-soft: #12261b;
+        --warning: #d4a72c;
+        --danger: #f85149;
+        --danger-soft: #2d1517;
+        --mark-tile: #e6edf3;
+        --mark-window: #0d1117;
+        --shadow-sm: 0 1px 2px rgb(1 4 9 / 40%);
+        --shadow-lg: 0 16px 48px rgb(1 4 9 / 60%);
+        --backdrop: rgb(1 4 9 / 65%);
+      }
+
+      /* Base elements */
       * {
         box-sizing: border-box;
       }
+      html,
+      body {
+        background: var(--surface-page);
+      }
       body {
         margin: 0;
-        font:
-          14px/1.5 -apple-system,
-          BlinkMacSystemFont,
-          'Segoe UI',
-          sans-serif;
-        color: var(--ink);
-        background: var(--paper);
+        font: 14px/1.5 var(--font);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
       }
       button,
       input,
       textarea,
       select {
         font: inherit;
+        color: inherit;
       }
-      button,
-      a,
-      input,
-      textarea,
-      select {
-        outline-offset: 4px;
+      a {
+        color: var(--accent);
+        text-underline-offset: 3px;
       }
+      :focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+      }
+      ::selection {
+        background: var(--accent-soft);
+        color: var(--text);
+      }
+      [hidden] {
+        display: none !important;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      .icon {
+        width: 20px;
+        height: 20px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.75;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .mark {
+        display: block;
+        flex: none;
+        width: 32px;
+        height: 32px;
+      }
+      .mark-tile,
+      .mark-face {
+        fill: var(--mark-tile);
+      }
+      .mark-window {
+        fill: var(--mark-window);
+      }
+
+      /* Buttons and form controls */
       button {
-        cursor: pointer;
-      }
-      button:disabled {
-        cursor: wait;
-        opacity: 0.5;
-      }
-      button {
-        border: 1px solid var(--line);
-        background: white;
-        color: var(--ink);
-        border-radius: 9px;
-        padding: 9px 13px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-height: 36px;
+        padding: 7px 14px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        background: transparent;
+        color: var(--text);
         font-weight: 550;
+        line-height: 1.25;
+        cursor: pointer;
+        transition: background-color 0.15s, border-color 0.15s, color 0.15s;
       }
       button:hover:not(:disabled) {
-        background: var(--paper);
+        background: var(--surface-raised);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
       }
       .primary {
-        background: var(--brand);
-        border-color: var(--brand);
-        color: white;
+        background: var(--primary-bg);
+        border-color: var(--primary-bg);
+        color: var(--primary-text);
       }
       .primary:hover:not(:disabled) {
-        background: #9a3412;
+        background: var(--primary-hover);
+        border-color: var(--primary-hover);
       }
       .quiet {
         background: transparent;
         border-color: transparent;
-        color: var(--muted);
+        color: var(--text-secondary);
       }
-      .tag {
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 1.2px;
-        padding: 4px 8px;
-        border: 1px solid #e4e4e7;
-        border-radius: 5px;
-        color: #3f3f46;
+      .quiet:hover:not(:disabled) {
+        color: var(--text);
       }
-      .mark {
-        width: 32px;
-        height: 32px;
-        display: grid;
-        place-items: center;
-        background: var(--brand);
-        border-radius: 9px;
-        color: var(--accent);
-        font-weight: 700;
-        font-size: 20px;
+      .icon-button {
+        width: 36px;
+        padding: 0;
       }
-      .brand {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-size: 17px;
-        font-weight: 680;
-        letter-spacing: -0.5px;
+      label {
+        display: block;
+        margin: 16px 0 6px;
+        font-size: 13px;
+        font-weight: 600;
       }
-      .topbar {
-        height: 69px;
-        background: white;
-        border-bottom: 1px solid var(--line);
-        padding: 0 25px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+      input,
+      select {
+        width: 100%;
+        min-height: 40px;
+        padding: 8px 12px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-sm);
+        background: var(--surface-field);
+        color: var(--text);
       }
-      .top-right {
-        display: flex;
-        gap: 10px;
-        align-items: center;
+      input[type='checkbox'] {
+        width: 16px;
+        height: 16px;
+        min-height: 0;
+        margin: 0;
+        accent-color: var(--accent);
       }
-      .help-link,
-      .update-link {
-        color: #9a3412;
+      input::placeholder,
+      textarea::placeholder {
+        color: var(--text-muted);
+        opacity: 1;
+      }
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible {
+        outline-offset: 1px;
+      }
+      .hint {
+        margin: 6px 0 0;
         font-size: 12px;
-        text-underline-offset: 3px;
+        color: var(--text-muted);
       }
       .subtle {
-        color: var(--muted);
-        font-size: 12px;
-      }
-      .app {
-        height: calc(100dvh - 69px);
-        display: grid;
-        grid-template-columns: 370px minmax(0, 1fr);
-      }
-      .sidebar {
-        background: white;
-        border-right: 1px solid var(--line);
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-      }
-      .side-head {
-        padding: 24px 22px 18px;
-        border-bottom: 1px solid var(--line);
-      }
-      .side-head h1 {
-        font-size: 19px;
-        letter-spacing: -0.5px;
-        margin: 0 0 4px;
-      }
-      .side-head p {
         margin: 0;
-        color: var(--muted);
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+      .segmented {
+        display: inline-flex;
+        flex: none;
+        gap: 2px;
+        padding: 2px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface-raised);
+      }
+      .segmented button {
+        min-height: 30px;
+        padding: 4px 10px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+      .segmented button:hover:not(:disabled) {
+        background: transparent;
+        color: var(--text);
+      }
+      .segmented button[aria-pressed='true'] {
+        background: var(--surface-panel);
+        color: var(--text);
+        box-shadow: inset 0 0 0 1px var(--border-strong);
+      }
+
+      /* Sign-in and setup */
+      .gate {
+        width: min(420px, calc(100% - 32px));
+        margin: max(32px, 9vh) auto 32px;
+      }
+      .gate-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
+        font-size: 16px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      .gate-version {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-muted);
+      }
+      .gate-card {
+        padding: 28px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        background: var(--surface-panel);
+        box-shadow: var(--shadow-sm);
+      }
+      .gate h1 {
+        margin: 0 0 8px;
+        font-size: 24px;
+        font-weight: 650;
+        line-height: 1.25;
+        letter-spacing: -0.02em;
+      }
+      .gate-text {
+        margin: 0;
+        color: var(--text-secondary);
+      }
+      .gate code {
+        padding: 1px 5px;
+        border-radius: 4px;
+        background: var(--surface-raised);
+        font: 12px var(--font-mono);
+      }
+      .gate .primary {
+        width: 100%;
+        min-height: 42px;
+        margin-top: 20px;
+      }
+      .gate-help {
+        margin: 16px 0 0;
+        font-size: 13px;
+        text-align: center;
+      }
+      .checks {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 20px;
+      }
+      .checks:empty {
+        display: none;
+      }
+      .check {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 10px;
+        border-radius: var(--radius-pill);
+        background: var(--surface-raised);
+        color: var(--text-secondary);
         font-size: 12px;
       }
-      .status {
-        display: flex;
-        gap: 6px;
-        align-items: center;
-        font-size: 11px;
-        color: var(--brand);
-        margin-top: 13px;
-      }
-      .dot {
+      .check::before {
+        content: '';
         width: 6px;
         height: 6px;
-        background: #c2410c;
         border-radius: 50%;
+        background: var(--success);
+      }
+      .check.warn {
+        color: var(--text);
+      }
+      .check.warn::before {
+        background: var(--warning);
+      }
+      .offline-notice {
+        padding: 8px 16px;
+        border-bottom: 2px solid var(--warning);
+        background: var(--surface-raised);
+        color: var(--text);
+        font-size: 13px;
+        text-align: center;
+      }
+
+      /* Workspace layout: rail | chat | browser-framed preview */
+      .app {
+        display: grid;
+        grid-template-columns: var(--rail-width) var(--chat-width) minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr) auto;
+        /* Desktop has no on-screen keyboard, so the CSS viewport height is exact
+           and never lags behind a window resize. */
+        height: max(560px, calc(100dvh - var(--workspace-chrome, 0px)));
+      }
+      .rail {
+        grid-column: 1;
+        grid-row: 1 / -1;
+      }
+      .sidebar {
+        grid-column: 2;
+        grid-row: 1;
+      }
+      .app-foot {
+        grid-column: 2;
+        grid-row: 2;
+      }
+      .workbench {
+        grid-column: 3;
+        grid-row: 1 / -1;
+      }
+      .workspace-switch {
+        display: none;
+      }
+
+      /* Rail */
+      .rail {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        min-height: 0;
+        padding: 14px 0 12px;
+        border-right: 1px solid var(--border);
+        background: var(--surface-page);
+      }
+      .rail-brand {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 14px;
+      }
+      .rail .mark {
+        width: 36px;
+        height: 36px;
+      }
+      .brand-name {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+      .version {
+        max-width: 56px;
+        font-size: 10px;
+        line-height: 1.2;
+        color: var(--text-muted);
+        text-align: center;
+      }
+      .tabs,
+      .rail-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+      }
+      .rail-actions {
+        margin-top: auto;
+      }
+      .rail-item {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        width: 54px;
+        min-height: 52px;
+        padding: 6px 2px;
+        border: 0;
+        border-radius: var(--radius-md);
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 550;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .rail-item:hover:not(:disabled) {
+        background: var(--surface-raised);
+        color: var(--text);
+      }
+      .tabs .rail-item[aria-selected='true'] {
+        background: var(--surface-raised);
+        color: var(--text);
+      }
+      .tabs .rail-item[aria-selected='true']::before {
+        content: '';
+        position: absolute;
+        left: -5px;
+        top: 14px;
+        bottom: 14px;
+        width: 3px;
+        border-radius: 3px;
+        background: var(--text);
+      }
+
+      /* Account menu */
+      .account-menu {
+        position: relative;
+      }
+      .account-menu summary {
+        list-style: none;
+      }
+      .account-menu summary::-webkit-details-marker {
+        display: none;
+      }
+      .account-menu[open] summary {
+        background: var(--surface-raised);
+        color: var(--text);
+      }
+      .account-menu-items {
+        position: absolute;
+        left: calc(100% + 10px);
+        bottom: 0;
+        z-index: 120;
+        width: 232px;
+        padding: 6px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        background: var(--surface-overlay);
+        box-shadow: var(--shadow-lg);
+      }
+      .menu-label {
+        margin: 6px 8px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
+      }
+      .account-menu-items .segmented {
+        display: flex;
+        margin: 0 4px 6px;
+      }
+      .account-menu-items .segmented button {
+        flex: 1;
+      }
+      .menu-item {
+        justify-content: flex-start;
+        width: 100%;
+        padding: 8px 10px;
+        white-space: nowrap;
+      }
+      .menu-item:hover:not(:disabled) {
+        background: var(--surface-raised);
+      }
+      .menu-divider {
+        height: 1px;
+        margin: 4px 0;
+        border: 0;
+        background: var(--border);
+      }
+
+      /* Chat pane */
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+        border-right: 1px solid var(--border);
+        background: var(--surface-panel);
+      }
+      .side-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 56px;
+        padding: 12px 20px;
+        border-bottom: 1px solid var(--border);
+      }
+      .side-head h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      .save-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        font-size: 12px;
+        color: var(--text-muted);
+        white-space: nowrap;
+      }
+      .save-status::before {
+        content: '';
+        flex: none;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--text-muted);
+      }
+      .save-status[data-status='published']::before {
+        background: var(--success);
+      }
+      .save-status[data-status='changes']::before {
+        background: var(--warning);
+      }
+      .request-error {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        margin: 12px 16px 0;
+        padding: 10px 12px;
+        border: 1px solid var(--danger);
+        border-radius: var(--radius-md);
+        background: var(--danger-soft);
+        color: var(--danger);
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+      .request-error button {
+        flex: none;
+        min-height: 30px;
+        padding: 4px 10px;
+        color: var(--danger);
       }
       .conversation {
-        padding: 23px 21px;
-        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
         flex: 1;
-        min-height: 120px;
+        min-height: 0;
+        padding: 20px;
+        overflow-y: auto;
       }
-      .welcome-icon {
-        width: 39px;
-        height: 39px;
-        background: var(--tint);
-        border-radius: 12px;
-        display: grid;
-        place-items: center;
-        font-size: 23px;
-        color: var(--brand);
-        margin-bottom: 15px;
+      .welcome {
+        margin: auto 0;
+        padding: 8px 0 16px;
+      }
+      .welcome .mark {
+        width: 40px;
+        height: 40px;
+        margin-bottom: 16px;
       }
       .welcome h2 {
-        font-size: 21px;
-        letter-spacing: -0.6px;
-        margin: 0 0 8px;
+        margin: 0 0 6px;
+        font-size: 22px;
+        font-weight: 650;
+        line-height: 1.3;
+        letter-spacing: -0.02em;
       }
       .welcome p {
-        color: var(--muted);
-        font-size: 13px;
-        margin: 0 0 22px;
+        margin: 0 0 20px;
+        color: var(--text-secondary);
+        font-size: 14px;
       }
       .suggestions {
-        display: grid;
+        display: flex;
+        flex-wrap: wrap;
         gap: 8px;
       }
       .suggestions button {
-        text-align: left;
-        font-size: 12px;
-        padding: 12px 13px;
-        font-weight: 450;
-        border-radius: 9px;
+        min-height: 34px;
+        padding: 6px 12px;
+        border-radius: var(--radius-pill);
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 500;
       }
-      .suggestions span {
-        float: right;
-        color: #71717a;
+      .sample-link {
+        min-height: 32px;
+        margin-top: 14px;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--accent);
+      }
+      .sample-link:hover:not(:disabled) {
+        background: none;
+        text-decoration: underline;
       }
       .message {
-        margin: 0 0 20px;
-        font-size: 13px;
+        font-size: 15px;
+        line-height: 1.6;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
       .message .who {
         display: block;
-        margin-bottom: 6px;
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 1.2px;
-        color: #71717a;
-        font-weight: 700;
+        margin-bottom: 2px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
       }
       .message.user {
-        background: var(--paper);
-        padding: 12px 14px;
-        border-radius: 12px;
+        align-self: flex-end;
+        max-width: 85%;
+        padding: 10px 14px;
+        border-radius: 18px 18px 6px 18px;
+        background: var(--surface-raised);
       }
       .message.user .who {
-        color: #71717a;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
       }
+      .message-target {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 12px;
+        color: var(--accent);
+      }
+      .working {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 20px 12px;
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+      .spinner {
+        flex: none;
+        width: 14px;
+        height: 14px;
+        border: 2px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes pulse {
+        50% {
+          opacity: 0.35;
+        }
+      }
+
+      /* Composer */
       .composer-wrap {
-        padding: 12px 17px 17px;
-        border-top: 1px solid var(--line);
+        padding: 4px 16px 16px;
       }
       .composer {
-        border: 1px solid #e4e4e7;
-        background: #ffffff;
-        border-radius: 13px;
-        padding: 11px;
+        position: relative;
+        padding: 10px 10px 8px 14px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-lg);
+        background: var(--surface-field);
+        box-shadow: var(--shadow-sm);
+        transition: border-color 0.15s, box-shadow 0.15s;
       }
       .composer:focus-within {
-        border-color: #c2410c;
-        box-shadow: 0 0 0 3px #ffedd566;
-      }
-      .composer.drag-over {
-        border-color: #c2410c;
-        background: #fff7ed;
-        box-shadow: 0 0 0 3px #ffedd5;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent);
       }
       .composer textarea {
+        display: block;
         width: 100%;
-        resize: none;
+        min-height: 72px;
+        max-height: 40vh;
+        padding: 4px 0 8px;
         border: 0;
-        background: transparent;
-        min-height: 77px;
         outline: none;
-        font-size: 13px;
-        line-height: 1.6;
+        resize: none;
+        background: transparent;
+        color: var(--text);
+        font-size: 15px;
+        line-height: 1.55;
       }
       .composer-bottom {
         display: flex;
-        justify-content: space-between;
         align-items: center;
+        gap: 8px;
       }
-      .composer-bottom button {
-        font-size: 12px;
-        padding: 7px 10px;
-      }
-      .composer-note {
-        font-size: 10px;
-        text-align: center;
-        color: #71717a;
-        margin: 10px 0 0;
-      }
-      .workbench {
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        min-height: 0;
-      }
-      .toolbar {
-        display: grid;
-        grid-template-columns: auto minmax(240px, 1fr) auto;
-        align-items: center;
-        padding: 10px 16px;
-        gap: 16px;
-        border-bottom: 1px solid var(--line);
-        background: #fafafa;
-        min-height: 90px;
-        flex-shrink: 0;
-      }
-      .tabs {
-        display: flex;
-        gap: 4px;
-      }
-      .toolbar > .view-controls {
-        grid-column: 3;
-      }
-      .tabs button {
-        border: 0;
-        background: transparent;
-        font-size: 12px;
-        color: var(--muted);
-        padding: 7px 12px;
-      }
-      .tabs button.active {
-        background: white;
-        box-shadow: 0 1px 4px #18181b12;
-        color: var(--ink);
-      }
-      .view-controls {
-        display: flex;
-        gap: 7px;
-        align-items: center;
-      }
-      .view-controls button {
-        padding: 5px 10px;
-        background: transparent;
-        font-size: 13px;
-      }
-      .view-controls button.active {
-        background: white;
-        border-color: #d4d4d8;
-      }
-      .view-controls select {
-        max-width: 190px;
-        font-size: 12px;
-      }
-      .canvas {
-        overflow: auto;
-        display: flex;
-        justify-content: center;
-        align-items: flex-start;
-        flex: 1;
-        padding: 26px;
-        background: radial-gradient(#d4d4d840 0.7px, transparent 0.7px);
-        background-size: 13px 13px;
-      }
-      .preview-shell {
-        width: 100%;
-        height: 100%;
-        min-height: 440px;
-        display: flex;
-        flex-direction: column;
-        border: 1px solid #e4e4e7;
-        border-radius: 12px;
-        overflow: hidden;
-        background: white;
-        box-shadow: 0 8px 40px #18181b0a;
-        transition: max-width 0.2s;
-      }
-      .preview-shell.mobile {
-        max-width: 390px;
-      }
-      .browser-bar {
-        background: #fff;
-        border-bottom: 1px solid #e4e4e7;
-        display: flex;
-        align-items: center;
-        padding: 12px 15px;
-        gap: 6px;
-        height: 42px;
-      }
-      .browser-bar i {
-        width: 7px;
-        height: 7px;
-        background: #d4d4d8;
+      .attach {
+        width: 34px;
+        min-height: 34px;
+        border: 1px solid var(--border);
         border-radius: 50%;
       }
-      .address {
-        flex: 1;
-        text-align: center;
-        color: #71717a;
-        font-size: 10px;
-        letter-spacing: 0.3px;
-        padding-right: 30px;
-      }
-      iframe {
-        width: 100%;
-        height: 100%;
-        min-height: 390px;
-        flex: 1;
+      .provider-status {
+        display: block;
+        min-width: 0;
+        min-height: 30px;
+        margin-right: auto;
+        padding: 4px 10px;
+        overflow: hidden;
         border: 0;
-        background: white;
+        border-radius: var(--radius-pill);
+        background: transparent;
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-weight: 500;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
-      .empty-preview {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        padding: 35px;
-        background: #ffffff;
-      }
-      .empty-preview .illustration {
-        width: 130px;
-        height: 100px;
-        border: 1px solid #d4d4d8;
-        border-radius: 9px;
-        position: relative;
-        background: #f4f4f5;
-        margin-bottom: 28px;
-        box-shadow: 12px 12px 0 #e4e4e7;
-      }
-      .illustration:before {
+      .provider-status::before {
         content: '';
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        margin-right: 6px;
+        border-radius: 50%;
+        background: var(--warning);
+        vertical-align: 1px;
+      }
+      .provider-status.connected::before {
+        background: var(--success);
+      }
+      .send {
+        min-height: 34px;
+        padding: 6px 12px 6px 14px;
+        border-radius: var(--radius-pill);
+      }
+      .send .icon {
+        width: 16px;
+        height: 16px;
+        stroke-width: 2;
+      }
+      .composer.drag-over {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent);
+      }
+      .composer.drag-over::after {
+        content: 'Drop images to add them';
         position: absolute;
-        left: 14px;
-        right: 14px;
-        top: 17px;
-        height: 9px;
-        background: #a1a1aa;
-        border-radius: 3px;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        border-radius: inherit;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 600;
       }
-      .illustration:after {
-        content: '';
-        position: absolute;
-        left: 14px;
-        top: 39px;
-        width: 55px;
-        height: 43px;
-        background: #e4e4e7;
-        border-radius: 4px;
-      }
-      .empty-preview h2 {
-        font-size: 29px;
-        font-weight: 700;
-        letter-spacing: -0.5px;
-        margin: 0 0 10px;
-      }
-      .empty-preview p {
-        max-width: 330px;
+      .selection-chip {
+        margin: 0 0 8px -4px;
+        padding: 8px 10px;
+        border: 1px solid var(--selection);
+        border-radius: var(--radius-md);
+        background: var(--accent-soft);
         font-size: 13px;
-        color: var(--muted);
-        margin: 0 0 22px;
       }
-      .bench-footer a {
-        color: inherit;
-        text-underline-offset: 2px;
+      .selection-chip > span {
+        display: block;
+        font-weight: 600;
+        overflow-wrap: anywhere;
       }
-      .bench-footer {
+      .selection-chip > div {
         display: flex;
-        flex-wrap: wrap;
-        gap: 6px 16px;
-        justify-content: space-between;
-        padding: 10px 23px;
-        color: #71717a;
-        font-size: 10px;
-        border-top: 1px solid var(--line);
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .selection-chip button {
+        min-height: 28px;
+        padding: 3px 10px;
+        font-size: 12px;
+      }
+
+      /* Sponsor and credits under the chat */
+      .app-foot {
+        min-width: 0;
+        padding: 0 16px 10px;
+        border-right: 1px solid var(--border);
+        background: var(--surface-panel);
       }
       .sponsor-spot {
-        width: 100%;
-        max-width: 440px;
         min-width: 0;
-        justify-self: center;
-        padding: 8px 12px;
-        border: 1px solid #e4e4e7;
-        border-radius: 8px;
-        background: #fafafa;
-        color: var(--ink);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        background: var(--surface-page);
       }
       .sponsor-link {
         display: flex;
         align-items: center;
         gap: 12px;
+        min-width: 0;
+        padding: 8px 12px;
+        border-radius: inherit;
         color: inherit;
         text-decoration: none;
       }
@@ -8168,234 +8673,582 @@ try {
         height: 48px;
         flex: 0 0 72px;
         object-fit: contain;
-        border-radius: 4px;
+        border-radius: 6px;
       }
       .sponsor-copy {
+        display: flex;
+        flex: 1;
+        flex-wrap: wrap;
+        align-items: baseline;
+        column-gap: 8px;
         min-width: 0;
-        font-size: 12px;
+        font-size: 13px;
         line-height: 1.4;
       }
       .sponsor-label {
-        display: block;
-        color: #52525b;
-        font-size: 9px;
-        letter-spacing: 0.4px;
-        text-transform: uppercase;
+        flex-basis: 100%;
+        font-size: 11px;
+        color: var(--text-muted);
       }
       .sponsor-copy strong {
-        display: block;
-        margin: 2px 0;
+        font-weight: 600;
       }
       .sponsor-cta {
-        color: #9a3412;
+        margin-left: auto;
+        font-size: 12px;
+        color: var(--accent);
+      }
+      .bench-footer {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 2px 12px;
+        padding: 8px 2px 0;
         font-size: 11px;
-        text-underline-offset: 3px;
+        color: var(--text-muted);
       }
-      @media (max-width: 1200px) {
-        .toolbar {
-          grid-template-columns: minmax(0, 1fr) auto;
-          gap: 10px;
-        }
-        .toolbar .sponsor-spot {
-          grid-column: 1 / -1;
-          grid-row: 2;
-        }
-        .toolbar > .view-controls {
-          grid-column: 2;
-        }
+      .bench-footer a {
+        color: inherit;
       }
-      @media (max-width: 440px) {
-        .toolbar {
-          grid-template-columns: minmax(0, 1fr);
-        }
-        .toolbar .sponsor-spot {
-          grid-row: 3;
-        }
-        .toolbar > .view-controls {
-          grid-column: 1;
-          grid-row: 2;
-        }
+      .bench-footer .update-link {
+        color: var(--accent);
+        font-weight: 600;
       }
-      .panel {
-        padding: 24px;
+
+      /* Browser-framed preview */
+      .workbench {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+        padding: 12px;
+        background: var(--surface-page);
+      }
+      .frame {
+        display: flex;
+        flex-direction: column;
         flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        background: var(--surface-panel);
+        box-shadow: var(--shadow-sm);
+      }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+      }
+      .view-controls {
+        display: flex;
+        flex: 1 1 280px;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .address {
+        display: flex;
+        flex: 1;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        height: 34px;
+        padding: 0 12px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-pill);
+        background: var(--surface-raised);
+        color: var(--text-muted);
+      }
+      .address .icon {
+        width: 16px;
+        height: 16px;
+      }
+      .address select {
+        flex: 0 1 auto;
+        width: auto;
+        min-width: 0;
+        max-width: 60%;
+        field-sizing: content;
+        min-height: 0;
+        height: 30px;
+        padding: 0 22px 0 2px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 550;
+        text-overflow: ellipsis;
+        appearance: none;
+        cursor: pointer;
+      }
+      .address select + .icon {
+        margin-left: -26px;
+        pointer-events: none;
+      }
+      .address select option {
+        background: var(--surface-overlay);
+        color: var(--text);
+      }
+      .address-status {
+        flex: 1 1 0;
+        min-width: 0;
+        margin-left: 4px;
+        overflow: hidden;
+        font-size: 12px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .segmented .icon {
+        width: 18px;
+        height: 18px;
+      }
+      .frame-title {
+        flex: 1;
+        padding-left: 6px;
+        font-size: 14px;
+        font-weight: 650;
+      }
+      .preview-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      .preview-actions button {
+        min-height: 34px;
+        padding: 6px 12px;
+        font-size: 13px;
+        white-space: nowrap;
+      }
+      .preview-actions .icon {
+        width: 16px;
+        height: 16px;
+      }
+      .preview-actions button[aria-pressed='true'] {
+        border-color: var(--selection);
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+      #previewHint {
+        display: none;
+        max-width: 300px;
+        overflow: hidden;
+        font-size: 12px;
+        color: var(--text-muted);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .preview-actions:has([aria-pressed='true']) #previewHint {
+        display: inline;
+      }
+      .publish {
+        margin-left: auto;
+        min-height: 34px;
+        padding: 6px 16px 6px 12px;
+        border-radius: var(--radius-pill);
+      }
+      .publish .icon {
+        width: 16px;
+        height: 16px;
+      }
+      /* The view menu and the About section are phone-only; see the phone layout below. */
+      .view-menu,
+      .settings-about {
+        display: none;
+      }
+      .visual-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--selection);
+        background: var(--accent-soft);
+      }
+      .visual-bar span {
+        flex: 1;
+        min-width: 140px;
+        font-size: 13px;
+      }
+      .visual-bar button {
+        min-height: 34px;
+        font-size: 13px;
+      }
+      .frame:has(.visual-bar:not([hidden])) > .toolbar,
+      .app:has(.visual-bar:not([hidden])) > .app-foot {
+        display: none;
+      }
+      .canvas {
+        position: relative;
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-height: 0;
+        background: var(--surface-raised);
+      }
+      .preview-shell {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        width: 100%;
+        min-height: 0;
+        background: var(--surface-panel);
+      }
+      .preview-shell.mobile {
+        max-width: 390px;
+        margin: 16px auto;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        box-shadow: var(--shadow-lg);
+      }
+      iframe {
+        flex: 1;
+        width: 100%;
+        min-height: 0;
+        border: 0;
+        background: var(--site-canvas);
+      }
+      .empty-preview {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 24px;
+        text-align: center;
         overflow: auto;
+      }
+      .illustration {
+        position: relative;
+        width: 168px;
+        height: 116px;
+        margin-bottom: 24px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-md);
+        background: var(--surface-panel);
+        box-shadow: 10px 10px 0 var(--surface-raised);
+      }
+      .illustration::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 22px;
+        border-bottom: 1px solid var(--border);
+        background:
+          radial-gradient(circle, var(--border-strong) 3px, transparent 3.5px) 8px 50% / 8px 8px no-repeat,
+          radial-gradient(circle, var(--border-strong) 3px, transparent 3.5px) 20px 50% / 8px 8px no-repeat,
+          radial-gradient(circle, var(--border-strong) 3px, transparent 3.5px) 32px 50% / 8px 8px no-repeat;
+      }
+      .illustration::after {
+        content: '';
+        position: absolute;
+        left: 16px;
+        right: 48px;
+        top: 38px;
+        height: 54px;
+        border-radius: 4px;
+        background:
+          linear-gradient(var(--text) 0 0) 0 0 / 70% 10px no-repeat,
+          linear-gradient(var(--border) 0 0) 0 22px / 100% 6px no-repeat,
+          linear-gradient(var(--border) 0 0) 0 34px / 80% 6px no-repeat,
+          linear-gradient(var(--accent) 0 0) 0 48px / 32% 6px no-repeat;
+      }
+      .empty-preview h2 {
+        margin: 0 0 8px;
+        font-size: 24px;
+        font-weight: 650;
+        letter-spacing: -0.02em;
+      }
+      .empty-preview p {
+        max-width: 340px;
+        margin: 0 0 20px;
+        color: var(--text-secondary);
+      }
+      .empty-preview .hint {
+        margin: 10px 0 0;
+        color: var(--text-muted);
+      }
+
+      /* Files, Images and History views */
+      .panel {
+        flex: 1;
+        min-height: 0;
+        padding: 24px;
+        overflow: auto;
+      }
+      .panel h2 {
+        margin: 0 0 4px;
+        font-size: 18px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      .panel-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 12px;
       }
       .files-layout {
         display: grid;
-        grid-template-columns: 180px 1fr;
-        gap: 20px;
+        grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+        gap: 16px;
         height: 100%;
       }
       .file-list {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 2px;
+        min-width: 0;
+        overflow: auto;
       }
       .file-list button {
+        flex: none;
+        justify-content: flex-start;
+        min-height: 34px;
+        padding: 6px 10px;
+        border: 0;
+        background: transparent;
+        color: var(--text-secondary);
+        font: 13px/1.4 var(--font-mono);
         text-align: left;
-        font:
-          12px ui-monospace,
-          monospace;
         overflow-wrap: anywhere;
       }
       .file-list button.active {
-        background: var(--tint);
-        border-color: #fed7aa;
+        background: var(--surface-raised);
+        color: var(--text);
+        box-shadow: inset 2px 0 0 var(--text);
       }
       .code-area {
         display: flex;
         flex-direction: column;
+        gap: 10px;
         min-width: 0;
-        gap: 12px;
-      }
-      .code-area textarea {
-        resize: none;
-        flex: 1;
-        min-height: 350px;
-        border: 1px solid var(--line);
-        border-radius: 9px;
-        padding: 17px;
-        tab-size: 2;
-        font:
-          12px/1.65 ui-monospace,
-          SFMono-Regular,
-          monospace;
-        background: #fff;
+        min-height: 0;
       }
       .code-title {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        font-size: 12px;
         gap: 10px;
-      }
-      .history-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 18px 0;
-        border-bottom: 1px solid var(--line);
-        gap: 15px;
-      }
-      .history-row strong {
         font-size: 13px;
       }
-      .history-row p {
-        font-size: 11px;
-        color: var(--muted);
-        margin: 4px 0;
+      .code-title span {
+        min-width: 0;
+        font-family: var(--font-mono);
+        overflow-wrap: anywhere;
+      }
+      .code-area textarea {
+        flex: 1;
+        min-height: 320px;
+        padding: 14px 16px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-md);
+        resize: none;
+        background: var(--surface-field);
+        color: var(--text);
+        font: 13px/1.65 var(--font-mono);
+        tab-size: 2;
       }
       .asset-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-        gap: 16px;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 12px;
         margin-top: 20px;
       }
       .asset-card {
-        padding: 12px;
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        background: white;
+        min-width: 0;
+        padding: 8px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        background: var(--surface-panel);
       }
       .asset-card img {
+        display: block;
         width: 100%;
-        height: 125px;
+        height: 120px;
         object-fit: contain;
-        border-radius: 5px;
-        background: var(--paper);
+        border-radius: var(--radius-sm);
+        background: var(--surface-raised);
       }
       .asset-card p {
-        font:
-          10px/1.5 ui-monospace,
-          monospace;
+        margin: 8px 2px 2px;
+        color: var(--text-secondary);
+        font: 12px/1.4 var(--font-mono);
         overflow-wrap: anywhere;
-        margin-bottom: 0;
       }
-      .gate {
-        max-width: 460px;
-        margin: 65px auto;
-        padding: 34px;
-        background: white;
-        border: 1px solid var(--line);
-        border-radius: 17px;
-        box-shadow: 0 12px 60px #18181b08;
+      .empty-note {
+        grid-column: 1 / -1;
+        margin: 16px 0 0;
+        padding: 24px;
+        border: 1px dashed var(--border-strong);
+        border-radius: var(--radius-md);
+        color: var(--text-muted);
+        font-size: 13px;
+        text-align: center;
       }
-      .gate h1 {
-        font-size: 26px;
-        letter-spacing: -1px;
-        margin: 20px 0 10px;
+      #historyList {
+        margin-top: 12px;
       }
-      .gate p {
-        color: var(--muted);
+      .history-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .history-row strong {
+        font-size: 14px;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+      .history-row p {
+        margin: 2px 0 0;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+
+      /* Floating text and image editing */
+      .floating-editor {
+        position: fixed;
+        z-index: 100;
+        max-width: calc(100vw - 16px);
+        padding: 6px 38px 6px 6px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        background: var(--surface-overlay);
+        color: var(--text);
+        box-shadow: var(--shadow-lg);
+      }
+      .floating-editor .floating-close {
+        position: absolute;
+        right: 4px;
+        top: 4px;
+        width: 30px;
+        min-height: 30px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 18px;
+      }
+      .text-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 2px;
+        max-width: 480px;
+      }
+      .floating-editor button,
+      .floating-editor select {
+        min-height: 34px;
+        padding: 4px 10px;
+        border-radius: 6px;
         font-size: 13px;
       }
-      .gate code {
+      .text-toolbar select {
+        width: auto;
+        min-width: 110px;
+      }
+      .text-toolbar button {
+        border-color: transparent;
+        background: transparent;
+      }
+      .text-toolbar button[aria-pressed='true'] {
+        background: var(--primary-bg);
+        color: var(--primary-text);
+      }
+      .image-toolbar {
+        display: grid;
+        gap: 8px;
+        width: 280px;
+        padding: 4px;
+      }
+      .image-toolbar strong {
+        font-size: 13px;
+      }
+      .image-toolbar label {
+        display: grid;
+        gap: 4px;
+        margin: 0;
+        color: var(--text-secondary);
         font-size: 12px;
-        background: var(--paper);
-        padding: 2px 4px;
-        border-radius: 3px;
+        font-weight: 550;
       }
-      label {
-        display: block;
-        font-size: 12px;
-        font-weight: 600;
-        margin: 17px 0 7px;
-      }
-      input,
-      select {
-        border: 1px solid #e4e4e7;
-        border-radius: 8px;
-        background: white;
-        padding: 10px 12px;
-        color: var(--ink);
+      .image-toolbar input,
+      .image-toolbar select {
         width: 100%;
+        margin: 0;
+        padding: 6px 8px;
       }
-      .gate .primary {
-        width: 100%;
-        margin-top: 22px;
-      }
-      .hint {
-        font-size: 11px !important;
-        color: var(--muted);
-        margin: 7px 0 0 !important;
-      }
-      .checks {
+      .image-size-controls {
         display: flex;
-        gap: 7px;
-        flex-wrap: wrap;
-        margin-top: 22px;
+        gap: 8px;
       }
-      .check {
-        background: var(--paper);
-        border-radius: 5px;
-        padding: 4px 7px;
-        font-size: 10px;
-        color: #52525b;
+      .image-size-controls label {
+        flex: 1;
+        min-width: 0;
       }
+
+      /* Dialogs and notices */
       dialog {
-        border: 1px solid var(--line);
-        border-radius: 15px;
-        max-width: 470px;
-        width: calc(100% - 32px);
-        padding: 27px;
-        box-shadow: 0 25px 100px #18181b33;
+        width: min(480px, calc(100% - 32px));
+        max-height: calc(var(--visible-height, 100dvh) - 32px);
+        padding: 24px;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        background: var(--surface-overlay);
+        color: var(--text);
+        box-shadow: var(--shadow-lg);
       }
       dialog::backdrop {
-        background: #18181b55;
-        backdrop-filter: blur(3px);
+        background: var(--backdrop);
       }
       dialog h2 {
-        margin: 0;
-        font-size: 20px;
-        letter-spacing: -0.6px;
+        margin: 0 0 6px;
+        font-size: 18px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
       }
       dialog p {
-        font-size: 13px;
-        color: var(--muted);
+        margin: 8px 0;
+        color: var(--text-secondary);
+      }
+      .settings-section {
+        margin: 24px 0 0;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+        font-size: 14px;
+        font-weight: 650;
+      }
+      #settingsForm > button {
+        margin-top: 10px;
+      }
+      .theme-setting {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px 16px;
+        margin-top: 8px;
+      }
+      .theme-setting .hint {
+        margin: 0;
       }
       .dialog-actions {
         display: flex;
+        flex-wrap: wrap;
         justify-content: flex-end;
         gap: 8px;
         margin-top: 24px;
@@ -8404,525 +9257,694 @@ try {
         display: flex;
         align-items: center;
         gap: 8px;
-        font-size: 11px;
         font-weight: 400;
       }
-      .inline-check input {
-        width: auto;
+      .diagnostic-data {
+        max-height: 45vh;
+        padding: 12px;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        background: var(--surface-field);
+        color: var(--text);
+        font: 12px/1.6 var(--font-mono);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
       }
       .toast {
         position: fixed;
-        bottom: 22px;
         left: 50%;
-        transform: translateX(-50%);
-        max-width: 560px;
+        bottom: 24px;
+        z-index: 130;
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
         width: max-content;
-        z-index: 9;
-        padding: 13px 18px;
-        border: 1px solid #e4e4e7;
-        border-radius: 10px;
-        background: #fff;
-        box-shadow: 0 10px 35px #18181b20;
-        font-size: 12px;
+        max-width: min(560px, calc(100% - 32px));
+        padding: 12px 16px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        background: var(--surface-overlay);
+        color: var(--text);
+        box-shadow: var(--shadow-lg);
+        font-size: 13px;
+        transform: translateX(-50%);
+      }
+      .toast::before {
+        content: '';
+        flex: none;
+        width: 8px;
+        height: 8px;
+        margin-top: 6px;
+        border-radius: 50%;
+        background: var(--success);
       }
       .toast.error {
-        border-color: #dab8b8;
-        color: var(--red);
+        border-color: var(--danger);
+        background: var(--danger-soft);
+        color: var(--danger);
       }
-      .request-error {
-        margin: 12px 17px 0;
-        padding: 10px 12px;
-        border: 1px solid #e0c6bc;
-        border-radius: 8px;
-        background: #fff8f3;
-        color: #873d2b;
-        font-size: 12px;
-        overflow-wrap: anywhere;
+      .toast.error::before {
+        background: var(--danger);
       }
-      .working {
-        padding: 0 22px 13px;
-        font-size: 12px;
-        color: var(--brand);
-      }
-      .spinner {
-        display: inline-block;
-        width: 12px;
-        height: 12px;
-        border: 2px solid #fed7aa;
-        border-top-color: var(--brand);
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        margin-right: 7px;
-        vertical-align: -2px;
-      }
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
-      [hidden] {
-        display: none !important;
-      }
-      @media (max-width: 1000px) {
-        .app {
-          grid-template-columns: 320px minmax(0, 1fr);
-        }
-        .toolbar {
-          padding: 12px;
-        }
-        .canvas {
-          padding: 16px;
-        }
-        .topbar {
-          height: auto;
-          min-height: 69px;
-          flex-wrap: wrap;
-          gap: 8px;
-          padding-block: 10px;
-        }
-        .top-right {
-          flex-wrap: wrap;
-        }
-      }
-      @media (max-width: 720px) {
-        .topbar {
-          padding: 0 15px;
-          height: 60px;
-        }
-        .top-right {
-          gap: 3px;
-        }
-        .top-right .subtle {
+
+      /* Medium screens: keep the split, tighten spacing */
+      @media (min-width: 721px) {
+        #selectionChatBtn {
           display: none;
         }
+      }
+      @media (min-width: 1280px) {
+        #previewHint {
+          display: inline;
+        }
+      }
+      @media (max-width: 1000px) {
+        .workbench {
+          padding: 8px;
+        }
+        .side-head,
+        .conversation {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+        .composer-wrap,
+        .app-foot {
+          padding-left: 12px;
+          padding-right: 12px;
+        }
+      }
+
+      /* Phones: top bar, one focused view, bottom Chat and Editor switch */
+      @media (max-width: 720px) {
+        .app.booting {
+          visibility: hidden;
+        }
+        body {
+          padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+            env(safe-area-inset-left);
+        }
         .app {
-          height: auto;
+          position: relative;
           display: flex;
           flex-direction: column;
+          height: max(
+            480px,
+            calc(
+              var(--visible-height, 100dvh) - var(--workspace-chrome, 0px) - env(safe-area-inset-top) -
+                env(safe-area-inset-bottom)
+            )
+          );
         }
-        .sidebar {
+        .rail {
+          flex-direction: row;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 0 2px;
+          padding: 6px 6px 6px 12px;
           border-right: 0;
-          min-height: 460px;
-          max-height: 65dvh;
+          border-bottom: 1px solid var(--border);
         }
+        .rail-brand {
+          flex-direction: row;
+          gap: 8px;
+          min-width: 0;
+          margin: 0 auto 0 0;
+        }
+        .rail .mark {
+          width: 28px;
+          height: 28px;
+        }
+        /* The version is listed in Settings > About on phones. */
+        .version {
+          display: none;
+        }
+        .rail-actions {
+          flex-direction: row;
+          gap: 2px;
+          margin: 0;
+        }
+        .rail-actions .rail-item {
+          width: 44px;
+          min-height: 44px;
+        }
+        .rail-label {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+          white-space: nowrap;
+        }
+        /* Phones switch views from the view menu in the editor bar instead. */
+        .tabs {
+          display: none;
+        }
+        .account-menu-items {
+          left: auto;
+          right: 0;
+          bottom: auto;
+          top: calc(100% + 6px);
+        }
+        .menu-item,
+        .account-menu-items .segmented button {
+          min-height: 44px;
+        }
+        .sidebar,
+        .workbench {
+          flex: 1;
+          min-height: 0;
+          border-right: 0;
+        }
+        .app[data-workspace='editor'] > .sidebar,
+        .app[data-workspace='chat'] > .workbench {
+          display: none;
+        }
+        /* Chat view: the save status sits in the top bar, next to the brand mark,
+           instead of taking its own row. The right offset leaves room for Help,
+           Settings and Account. */
         .side-head {
-          padding: 15px 18px;
+          position: absolute;
+          top: 0;
+          left: 48px;
+          right: 150px;
+          min-height: 0;
+          height: 56px;
+          padding: 0;
+          border-bottom: 0;
         }
-        .conversation {
-          min-height: 130px;
+        .save-status {
+          overflow: hidden;
+        }
+        .side-head h1 {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+        }
+        .composer-wrap {
+          padding: 4px 12px 10px;
+        }
+        .composer textarea {
+          min-height: 64px;
+        }
+        .composer-bottom button,
+        .preview-actions button,
+        .publish,
+        .visual-bar button,
+        .segmented button,
+        .selection-chip button {
+          min-height: 44px;
+        }
+        .attach {
+          flex: none;
+          width: 44px;
+        }
+        .panel button,
+        .file-list button,
+        .suggestions button,
+        .sample-link,
+        .request-error button,
+        .send,
+        .text-toolbar button,
+        .text-toolbar select,
+        .image-toolbar button,
+        .image-toolbar select,
+        .image-toolbar input,
+        #emptyPreview button {
+          min-height: 44px;
+        }
+        .text-toolbar button {
+          min-width: 44px;
+        }
+        input,
+        select,
+        textarea,
+        .composer textarea,
+        .address select,
+        .image-toolbar input,
+        .image-toolbar select,
+        .text-toolbar select {
+          font-size: 16px;
         }
         .workbench {
-          height: 650px;
-          min-height: 650px;
+          padding: 0;
+        }
+        .frame {
+          border: 0;
+          border-radius: 0;
+          box-shadow: none;
+        }
+        /* Editor view: one compact bar. The page picker works as an address bar,
+           followed by icon buttons for Edit, Publish and the view menu. Settings
+           and Account float over the bar's right end, so the bar reserves room. */
+        .app[data-workspace='editor'] > .rail {
+          position: absolute;
+          top: 0;
+          right: 0;
+          z-index: 30;
+          padding: 4px 8px 4px 0;
+          border-bottom: 0;
+          background: transparent;
+        }
+        .app[data-workspace='editor'] .rail-brand,
+        .app[data-workspace='editor'] #editorHelpLink {
+          display: none;
         }
         .toolbar {
+          flex-wrap: nowrap;
+          gap: 4px;
+          padding: 4px 102px 4px 8px;
+        }
+        .view-controls {
+          flex: 1 1 0;
+        }
+        .view-controls .segmented,
+        #previewAddress,
+        #previewHint,
+        #selectElementBtn {
+          display: none;
+        }
+        /* An inset shadow draws the border so the picker itself can be 44px tall. */
+        .address {
+          height: 44px;
+          padding: 0 8px 0 14px;
+          border: 0;
+          box-shadow: inset 0 0 0 1px var(--border);
+        }
+        /* The globe would take room the page name needs on narrow screens. */
+        .address > .icon:first-child {
+          display: none;
+        }
+        .address select {
+          flex: 1 1 auto;
+          width: 100%;
+          max-width: none;
+          field-sizing: fixed;
+          height: 44px;
+          padding-right: 22px;
+        }
+        .preview-actions {
+          display: contents;
+        }
+        .toolbar-label {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+          white-space: nowrap;
+        }
+        #editPageBtn,
+        .view-menu-button {
+          flex: none;
+          width: 44px;
+          min-height: 44px;
+          padding: 0;
+          border: 0;
+          border-radius: var(--radius-md);
+          background: transparent;
+          color: var(--text-secondary);
+        }
+        #editPageBtn .icon,
+        .view-menu-button .icon {
+          width: 20px;
+          height: 20px;
+        }
+        .publish {
+          flex: none;
+          width: 44px;
+          margin-left: 0;
+          padding: 0;
+        }
+        .publish .icon {
+          width: 20px;
+          height: 20px;
+        }
+        /* While selecting for AI, the hint and Continue in Chat get their own row. */
+        .toolbar:has(#selectElementBtn[aria-pressed='true']),
+        .toolbar:has(#selectionChatBtn:not([hidden])) {
           flex-wrap: wrap;
-          gap: 8px;
         }
-        .canvas {
-          padding: 12px;
+        .toolbar #previewHint {
+          order: 10;
+          flex: 1 1 100%;
+          max-width: none;
+          padding: 4px;
+          white-space: normal;
         }
-        .view-controls select {
-          max-width: 135px;
+        .preview-actions:has([aria-pressed='true']) #previewHint {
+          display: block;
+        }
+        #selectionChatBtn {
+          order: 11;
+        }
+        .view-menu {
+          position: relative;
+          display: block;
+          flex: none;
+        }
+        .view-menu-button[aria-expanded='true'] {
+          background: var(--surface-raised);
+          color: var(--text);
+        }
+        .view-menu-items {
+          position: absolute;
+          top: calc(100% + 6px);
+          right: 0;
+          z-index: 120;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          width: 224px;
+          padding: 6px;
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+          background: var(--surface-overlay);
+          box-shadow: var(--shadow-lg);
+        }
+        .view-menu-items [role^='menuitem'] {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
+          gap: 10px;
+          width: 100%;
+          min-height: 44px;
+          padding: 0 12px;
+          border: 0;
+          border-radius: var(--radius-sm);
+          background: transparent;
+          color: var(--text-secondary);
+          font-size: 15px;
+          font-weight: 550;
+          text-decoration: none;
+        }
+        .view-menu-items [role^='menuitem']:hover,
+        .view-menu-items [role^='menuitem']:focus-visible {
+          background: var(--surface-raised);
+          color: var(--text);
+        }
+        .view-menu-items [role^='menuitem']:focus-visible {
+          outline-offset: -2px;
+        }
+        .view-menu-items [aria-checked='true'] {
+          background: var(--surface-raised);
+          color: var(--text);
+          font-weight: 650;
+        }
+        .view-menu-items [aria-checked='true']::before {
+          content: '';
+          position: absolute;
+          left: 0;
+          top: 12px;
+          bottom: 12px;
+          width: 3px;
+          border-radius: 3px;
+          background: var(--text);
+        }
+        .view-menu-items .menu-divider {
+          margin: 2px 0;
+        }
+        .preview-shell.mobile {
+          max-width: none;
+          margin: 0;
+          border: 0;
+          border-radius: 0;
+          box-shadow: none;
+        }
+        .panel {
+          padding: 16px;
         }
         .files-layout {
-          grid-template-columns: 1fr;
+          grid-template-columns: minmax(0, 1fr);
           height: auto;
         }
         .file-list {
           flex-direction: row;
-          overflow: auto;
+          overflow-x: auto;
         }
         .file-list button {
-          min-width: 120px;
+          max-width: 70vw;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          overflow-wrap: normal;
         }
-        .panel {
-          padding: 18px;
+        .file-list button.active {
+          box-shadow: inset 0 -2px 0 var(--text);
         }
-        .gate {
-          margin: 28px 15px;
-          padding: 25px;
-          max-width: none;
+        /* The ad becomes one slim line; the credits move to Settings > About.
+           An available update shares that line so the preview keeps its height. */
+        .app-foot {
+          order: 9;
+          display: flex;
+          align-items: center;
+          min-width: 0;
+          padding: 0;
+          border-top: 1px solid var(--border);
+          border-right: 0;
+          background: var(--surface-page);
+        }
+        .sponsor-spot {
+          flex: 1 1 auto;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+        }
+        .sponsor-link {
+          min-height: 44px;
+          padding: 0 16px;
+        }
+        .sponsor-image,
+        .sponsor-copy strong,
+        .bench-footer {
+          display: none;
+        }
+        .bench-footer:has(#updateAvailable:not([hidden])) {
+          display: flex;
+          flex: none;
+          padding: 0 16px 0 0;
+        }
+        .bench-footer > :not(#updateAvailable) {
+          display: none;
+        }
+        #updateAvailable:not([hidden]) {
+          display: inline-flex;
+          align-items: center;
+          min-height: 44px;
+          font-size: 12px;
+        }
+        /* With an update showing, the ad keeps its label and drops the call to action. */
+        .app-foot:has(#updateAvailable:not([hidden])) .sponsor-cta {
+          display: none;
+        }
+        .sponsor-copy {
+          flex-wrap: nowrap;
+          align-items: center;
+          font-size: 12px;
+        }
+        .sponsor-label {
+          flex: 0 1 auto;
+          min-width: 0;
+          overflow: hidden;
+          font-size: 12px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .sponsor-cta {
+          flex: none;
+        }
+        .workspace-switch {
+          display: flex;
+          order: 10;
+          gap: 6px;
+          padding: 4px 12px;
+          border-top: 1px solid var(--border);
+          background: var(--surface-page);
+        }
+        .workspace-switch button {
+          flex: 1;
+          gap: 8px;
+          min-height: 44px;
+          border: 0;
+          border-radius: var(--radius-md);
+          background: transparent;
+          color: var(--text-muted);
+        }
+        .workspace-switch button[aria-pressed='true'] {
+          background: var(--surface-raised);
+          color: var(--text);
+        }
+        .app:has(.visual-bar:not([hidden])) > .rail,
+        .app:has(.visual-bar:not([hidden])) > .workspace-switch {
+          display: none;
+        }
+        .floating-editor {
+          padding-right: 50px;
+        }
+        .floating-editor button,
+        .floating-editor select {
+          min-height: 44px;
+        }
+        .floating-editor .floating-close {
+          width: 44px;
+          min-height: 44px;
+        }
+        .image-toolbar {
+          width: min(280px, calc(100vw - 84px));
+        }
+        dialog {
+          width: calc(100% - 24px);
+          max-height: calc(var(--visible-height, 100dvh) - 24px);
+          padding: 20px;
+        }
+        dialog button,
+        dialog input:not([type='checkbox']),
+        dialog select {
+          min-height: 44px;
+        }
+        /* The whole label is the tap target for its checkbox. */
+        .inline-check {
+          min-height: 44px;
+        }
+        .inline-check input {
+          width: 20px;
+          height: 20px;
+        }
+        dialog .help-link {
+          display: inline-flex;
+          align-items: center;
+          min-height: 44px;
+        }
+        .settings-about {
+          display: block;
+        }
+        .about-credits {
+          margin: 0;
+          font-size: 13px;
+          color: var(--text-muted);
+        }
+        .about-credits a {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 44px;
+          min-height: 44px;
         }
         .toast {
-          max-width: calc(100% - 28px);
-          width: calc(100% - 28px);
-        }
-        .brand {
-          font-size: 16px;
-        }
-        .top-right button {
-          font-size: 12px;
-          padding: 8px 10px;
-        }
-        .bench-footer a {
-          color: inherit;
-          text-underline-offset: 2px;
-        }
-        .bench-footer {
-          padding: 10px 15px;
+          width: calc(100% - 24px);
+          max-width: none;
+          bottom: 84px;
         }
       }
       @media (prefers-reduced-motion: reduce) {
-        * {
+        *,
+        *::before,
+        *::after {
           animation: none !important;
           transition: none !important;
         }
-      }
-      .floating-editor {
-        position: fixed; z-index: 100; max-width: calc(100vw - 16px);
-        padding: 6px 32px 6px 6px; background: white; color: #242424;
-        border: 1px solid #e5e5e5; border-radius: 10px;
-        box-shadow: 0 8px 30px #0002;
-      }
-      .floating-editor .floating-close { position: absolute; right: 3px; top: 3px; padding: 0; width: 26px; min-height: 26px; background: white; }
-      .text-toolbar { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; max-width: 470px; }
-      .text-toolbar select { width: auto; min-width: 105px; }
-      .floating-editor button, .floating-editor select { min-height: 34px; padding: 6px 8px; font-size: 12px; border-radius: 5px; }
-      .text-toolbar button[aria-pressed="true"] { background: var(--brand); color: white; }
-      .image-toolbar { display: grid; gap: 8px; width: 270px; padding: 6px; }
-      .image-toolbar label { display: grid; gap: 3px; font-size: 12px; }
-      .image-toolbar input, .image-toolbar select { width: 100%; margin: 0; padding: 7px; }
-      .image-size-controls { display: flex; gap: 8px; }
-      .image-size-controls label { flex: 1; min-width: 0; }
-      .visual-bar { display: flex; flex-shrink: 0; gap: 8px; align-items: center; padding: 0 0 10px; }
-      .visual-bar span { flex: 1; font-size: 12px; color: var(--muted); }
-      .visual-bar button { padding: 7px 12px; font-size: 12px; }
-      .canvas:has(.visual-bar:not([hidden])) {
-        display: flex;
-        flex-direction: column;
-      }
-      .canvas:has(.visual-bar:not([hidden])) .preview-shell {
-        flex: 1;
-        min-height: 300px;
-      }
-      .diagnostic-data {
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-        font:
-          12px/1.6 ui-monospace,
-          monospace;
-        background: #fafafa;
-        padding: 14px;
-        border-radius: 12px;
-        max-height: 45vh;
-        overflow: auto;
-      }
-      @media (max-width: 720px) {
-        .topbar {
-          height: auto;
-          min-height: 60px;
-          flex-wrap: wrap;
-          gap: 6px;
-          padding: 10px 15px;
+        .spinner {
+          border-top-color: var(--border);
+          background: var(--accent);
+          animation: pulse 1.6s ease-in-out infinite !important;
         }
-        .top-right {
-          width: 100%;
-          justify-content: flex-end;
-          flex-wrap: wrap;
-        }
-      }
-
-      .canvas {
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-start;
-        gap: 12px;
-      }
-      .canvas .preview-shell {
-        flex: 1;
-        min-height: 0;
-        height: auto;
-      }
-      .preview-actions {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        flex-wrap: wrap;
-      }
-      .preview-actions > div {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-      }
-      .preview-actions button {
-        white-space: nowrap;
-      }
-      .preview-actions span {
-        font-size: 12px;
-        color: var(--muted);
-        max-width: 360px;
-      }
-      .preview-actions button[aria-pressed='true'] {
-        background: var(--tint);
-        border-color: #c2410c;
-      }
-      .selection-chip {
-        background: #fff7ed;
-        border: 1px solid #fed7aa;
-        border-radius: 8px;
-        padding: 9px 10px;
-        margin-bottom: 9px;
-        font-size: 12px;
-      }
-      .selection-chip > span {
-        display: block;
-        overflow-wrap: anywhere;
-        font-weight: 600;
-      }
-      .selection-chip > div {
-        display: flex;
-        gap: 7px;
-        margin-top: 6px;
-      }
-      .selection-chip button {
-        padding: 4px 8px;
-        font-size: 11px;
-      }
-      .message-target {
-        display: block;
-        color: #9a3412;
-        font-size: 11px;
-        margin-bottom: 5px;
-      }
-      @media (max-width: 720px) {
-        .preview-actions {
-          gap: 6px;
-        }
-        .preview-actions span {
-          font-size: 11px;
-        }
-        .composer textarea {
-          min-height: 65px;
-        }
-      }
-      .workspace-switch { display: none; }
-      .offline-notice { padding: 10px 16px; background: #fff7ed; color: #9a3412; font-size: 14px; text-align: center; }
-      @media (max-width: 720px) {
-        body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
-        .topbar { height: auto; min-height: 60px; gap: 8px; padding: 10px max(12px, env(safe-area-inset-right)) 10px max(12px, env(safe-area-inset-left)); }
-        .top-right { gap: 4px; }
-        button, .top-right a, .help-link { min-height: 44px; }
-        .top-right a { display: inline-flex; align-items: center; }
-        input, textarea, select, .composer textarea, .image-toolbar input, .image-toolbar select, .text-toolbar select { font-size: 16px; }
-        .workspace-switch { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: white; }
-        .workspace-switch button { flex: 1; border: 0; background: #f4f4f5; }
-        .workspace-switch button[aria-pressed="true"] { color: var(--brand); background: var(--tint); font-weight: 700; }
-        .app[data-workspace="editor"] > .sidebar, .app[data-workspace="chat"] > .workbench { display: none; }
-        .app[data-workspace="chat"] > .sidebar { min-height: 360px; height: max(360px, calc(var(--visible-height, 100dvh) - var(--workspace-chrome, 180px))); max-height: none; }
-        .workbench { height: max(480px, calc(var(--visible-height, 100dvh) - var(--workspace-chrome, 180px))); min-height: 480px; }
-        .toolbar { min-height: 0; gap: 6px; padding: 8px 12px; }
-        .tabs { gap: 2px; }
-        .tabs button { padding: 8px; }
-        .app:has(.visual-bar:not([hidden])) .workspace-switch,
-        .app:has(.visual-bar:not([hidden])) .toolbar,
-        body:has(.visual-bar:not([hidden])) .top-right { display: none; }
-        .visual-bar { align-items: center; flex-wrap: wrap; background: var(--paper); }
-        .visual-bar span { min-width: 120px; }
-        .visual-bar button { min-height: 44px; }
-        .floating-editor { padding-right: 50px; }
-        .floating-editor button, .floating-editor select { min-height: 44px; }
-        .floating-editor .floating-close { width: 44px; min-height: 44px; }
-        .image-toolbar { width: min(270px, calc(100vw - 84px)); }
-        dialog { max-width: calc(100vw - 24px); max-height: calc(var(--visible-height, 100dvh) - 24px); overflow: auto; }
-        .dialog-actions { flex-wrap: wrap; }
-        .composer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
-      }
-      .account-menu { position: relative; }
-      .account-menu summary { list-style: none; cursor: pointer; padding: 8px 10px; border-radius: 6px; color: var(--muted); }
-      .account-menu summary::-webkit-details-marker { display: none; }
-      .account-menu summary:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-      .account-menu-items { position: absolute; right: 0; top: calc(100% + 6px); z-index: 110; min-width: 170px; padding: 5px; border: 1px solid var(--line); border-radius: 8px; background: white; box-shadow: 0 8px 24px #0001; }
-      .account-menu-items button { display: block; width: 100%; text-align: left; white-space: nowrap; padding: 10px 12px; }
-      .topbar { height: 64px; min-height: 64px; padding: 0 28px; background: #fff; }
-      .top-right { gap: 12px; }
-      .top-right .help-link { font-size: 12px; color: var(--muted); text-decoration: none; }
-      .brand .tag { border: 0; padding: 0 0 0 4px; background: none; color: #8b8b88; font-size: 9px; }
-      .app { display: block; height: auto; background: #fafaf8; }
-      .workspace-switch { display: flex; justify-content: center; align-items: center; gap: 4px; min-height: 54px; padding: 8px; border-bottom: 1px solid var(--line); background: #fff; }
-      .workspace-switch button { flex: none; min-width: 90px; padding: 8px 22px; border: 0; border-radius: 6px; font-size: 14px; background: transparent; color: var(--muted); }
-      .workspace-switch button[aria-pressed="true"] { color: var(--brand); background: #fff1e9; font-weight: 600; }
-      .app[data-workspace="editor"] > .sidebar, .app[data-workspace="chat"] > .workbench { display: none; }
-      .sidebar { width: 100%; max-width: 760px; margin: 0 auto; height: max(540px, calc(var(--visible-height, 100dvh) - var(--workspace-chrome, 118px))); min-height: 0; max-height: none; border: 0; background: #fff; }
-      .side-head { padding: 38px 30px 22px; border: 0; }
-      .chat-eyebrow { font-size: 9px; letter-spacing: 1.8px; color: #8b8b80; }
-      .side-head h1 { margin: 20px 0 14px; font: 400 46px/1.08 Georgia, serif; letter-spacing: -1.5px; }
-      .side-head p { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.7; }
-      .sidebar.has-messages .side-head { padding: 22px 30px 12px; }
-      .sidebar.has-messages .side-head h1 { font-size: 28px; margin: 0; }
-      .sidebar.has-messages .side-head p, .sidebar.has-messages .chat-eyebrow { display: none; }
-      .conversation { padding: 20px 30px; min-height: 120px; }
-      .welcome { padding: 10px 0; text-align: left; border-top: 1px solid var(--line); }
-      .welcome h2 { margin: 18px 0 10px; font-size: 16px; font-weight: 600; }
-      .welcome p { font-size: 12px; line-height: 1.7; color: var(--muted); }
-      .suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 20px; }
-      .suggestions button { width: auto; padding: 8px 10px; font-size: 11px; border-radius: 5px; background: #fafaf8; }
-      .sample-link { border: 0; background: none; padding: 12px 0; color: var(--brand); font-size: 12px; }
-      .message { padding: 14px 0; margin-bottom: 12px; font-size: 14px; line-height: 1.7; }
-      .message.user { margin-left: 32px; padding: 14px 18px; background: #f5f5f2; border-radius: 12px; }
-      .message.assistant { background: none; border-radius: 0; margin-right: 24px; }
-      .message .who { font-size: 9px; letter-spacing: 1px; margin-bottom: 7px; color: #8b8b85; }
-      .composer-wrap { padding: 16px 20px 14px; border: 0; background: white; }
-      .composer { padding: 14px; border: 1px solid #deded6; border-radius: 12px; background: white; box-shadow: none; }
-      .composer textarea { min-height: 110px; padding: 4px 2px 12px; font-size: 14px; line-height: 1.6; }
-      .composer-bottom button { min-height: 36px; padding: 8px 12px; }
-      .composer-note { font-size: 10px; color: #92928a; margin: 9px 0; }
-      .provider-status { display: block; margin: 0 auto; border: 0; padding: 4px 8px; color: #85857d; background: none; font-size: 11px; }
-      .workbench { height: max(560px, calc(var(--visible-height, 100dvh) - var(--workspace-chrome, 118px))); min-height: 560px; background: #f7f7f3; }
-      .workspace-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 28px; background: #fff; border-bottom: 1px solid var(--line); }
-      .workspace-heading strong { display: block; font-size: 14px; font-weight: 600; }
-      .workspace-heading #saveStatus { display: block; margin-top: 5px; font-size: 10px; color: #85857d; }
-      .workspace-heading #saveStatus::before { content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 5px; border-radius: 50%; background: #899b76; }
-      .workspace-heading #publishBtn { padding: 9px 18px; min-width: 100px; font-size: 12px; }
-      .toolbar { display: flex; justify-content: space-between; gap: 12px; min-height: 54px; padding: 8px 28px; background: #fff; }
-      .tabs { gap: 4px; }
-      .tabs button { font-size: 11px; padding: 7px 12px; border-radius: 5px; }
-      .view-controls { margin-left: auto; }
-      .view-controls button, .view-controls select { min-height: 32px; padding: 5px 9px; font-size: 11px; }
-      .workbench > .sponsor-spot { width: calc(100% - 56px); max-width: none; min-height: 0; margin: 12px 28px 0; border: 1px dashed #dddcd3; background: #fafaf5; border-radius: 6px; flex-shrink: 0; }
-      .workbench > .sponsor-spot .sponsor-link { width: 100%; min-height: 44px; padding: 10px 12px; gap: 12px; }
-      .workbench > .sponsor-spot .sponsor-copy { display: flex; flex: 1; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
-      .workbench > .sponsor-spot .sponsor-label { font-size: 8px; color: #999990; letter-spacing: 1px; }
-      .workbench > .sponsor-spot strong { font-size: 11px; color: #858578; font-weight: 400; }
-      .workbench > .sponsor-spot .sponsor-cta { margin-left: auto; font-size: 10px; color: #858578; }
-      .canvas { padding: 16px 28px 24px; align-items: center; background: #f7f7f3; }
-      .canvas > .preview-actions, .canvas > .visual-bar, .canvas > .preview-shell { width: 100%; max-width: 1360px; }
-      .canvas > .preview-shell.mobile { max-width: 390px; }
-      .preview-shell { box-shadow: none; border: 1px solid #deded6; border-radius: 9px; }
-      .browser-bar { height: 30px; padding: 7px 14px; flex-shrink: 0; background: #fff; }
-      .browser-bar .address { text-align: left; font-size: 10px; padding: 0; color: #92928a; }
-      .preview-actions { min-height: 30px; }
-      .preview-actions button { padding: 6px 10px; font-size: 11px; min-height: 30px; }
-      .preview-actions #previewHint { font-size: 10px; color: #92928a; }
-      .bench-footer { padding: 8px 28px; font-size: 9px; background: #fafaf7; }
-      .app:has(.visual-bar:not([hidden])) > .workspace-switch,
-      .workbench:has(.visual-bar:not([hidden])) > .workspace-heading,
-      .workbench:has(.visual-bar:not([hidden])) > .sponsor-spot { display: none; }
-      @media (max-width: 720px) {
-        .topbar { height: auto; min-height: 64px; padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left)); gap: 6px; }
-        .top-right { width: auto; gap: 3px; flex-wrap: nowrap; }
-        .top-right button, .account-menu summary { min-height: 44px; padding: 10px 8px; }
-        .brand { gap: 7px; font-size: 15px; }
-        .brand .tag { font-size: 8px; }
-        .workspace-switch { min-height: 54px; padding: 6px; }
-        .workspace-switch button { min-width: 90px; min-height: 42px; }
-        .app[data-workspace="chat"] > .sidebar { height: max(520px, calc(var(--visible-height, 100dvh) - var(--workspace-chrome, 118px))); min-height: 520px; max-height: none; }
-        .side-head { padding: 28px 22px 18px; }
-        .side-head h1 { font-size: 38px; }
-        .sidebar.has-messages .side-head { padding: 20px 22px 10px; }
-        .conversation { padding: 12px 22px; }
-        .composer-wrap { padding: 12px 14px max(12px, env(safe-area-inset-bottom)); }
-        .composer textarea { font-size: 16px; min-height: 100px; }
-        .composer-bottom button { min-height: 44px; }
-        .workbench { height: max(540px, calc(var(--visible-height, 100dvh) - var(--workspace-chrome, 118px))); min-height: 540px; }
-        .workspace-heading { padding: 12px 16px; }
-        .workspace-heading #publishBtn { min-height: 44px; }
-        .toolbar { flex-wrap: wrap; padding: 8px 14px; gap: 6px; }
-        .tabs { flex: 1; }
-        .tabs button { padding: 7px 8px; min-height: 38px; }
-        .view-controls { gap: 4px; }
-        .view-controls button { min-height: 38px; }
-        .view-controls select { font-size: 16px; max-width: 150px; }
-        .workbench > .sponsor-spot { width: calc(100% - 28px); margin: 10px 14px 0; }
-        .workbench > .sponsor-spot .sponsor-link { padding: 9px; }
-        .workbench > .sponsor-spot .sponsor-copy { gap: 4px 8px; }
-        .workbench > .sponsor-spot .sponsor-label { font-size: 7px; }
-        .workbench > .sponsor-spot .sponsor-cta { font-size: 9px; }
-        .canvas { padding: 12px 14px; }
-        .preview-actions { gap: 6px; }
-        .preview-actions button { min-height: 44px; }
-        .preview-actions #previewHint { display: none; }
-        .bench-footer { padding: 7px 14px; font-size: 9px; }
-      }
-      @media (min-width: 721px) {
-        .app { display: grid; grid-template-columns: 320px minmax(0, 1fr); height: max(560px, calc(var(--visible-height, 100dvh) - var(--workspace-chrome, 64px))); }
-        .workspace-switch { display: none; }
-        .app[data-workspace] > .sidebar { display: flex; height: 100%; min-width: 0; max-width: none; border-right: 1px solid var(--line); }
-        .app[data-workspace] > .workbench { display: flex; height: 100%; min-width: 0; }
-        .side-head, .sidebar.has-messages .side-head { padding: 24px 22px 16px; }
-        .side-head h1, .sidebar.has-messages .side-head h1 { font-size: 28px; }
-        .conversation { padding: 16px 22px; }
-        .composer-wrap { padding: 12px; }
-        .toolbar { flex-wrap: wrap; padding: 8px 16px; }
-        .canvas { padding: 16px; }
-        #selectionChatBtn { display: none; }
-      }
-      @media (min-width: 1001px) {
-        .app { grid-template-columns: 370px minmax(0, 1fr); }
       }
     </style>
   </head>
   <body>
-    <header class="topbar">
-      <div class="brand">
-        <img class="mark" alt="" width="32" height="32" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiByb2xlPSJpbWciIGFyaWEtbGFiZWxsZWRieT0idGl0bGUiPgogIDx0aXRsZSBpZD0idGl0bGUiPlNpdGVmcmVuIHNtaWxpbmcgYnJvd3NlcjwvdGl0bGU+CiAgPHN0eWxlPgogICAgLmJyYW5kIHsgZmlsbDogI0NDM0QwMDsgfQogICAgLndpbmRvdyB7IGZpbGw6ICNGRkZGRkY7IH0KICA8L3N0eWxlPgogIDxyZWN0IGNsYXNzPSJicmFuZCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHJ4PSI4OCIvPgogIDxyZWN0IGNsYXNzPSJ3aW5kb3ciIHg9Ijc0IiB5PSI4NiIgd2lkdGg9IjM2NCIgaGVpZ2h0PSIzMjgiIHJ4PSI0MCIvPgogIDxnIGNsYXNzPSJicmFuZCI+CiAgICA8Y2lyY2xlIGN4PSIxMzIiIGN5PSIxMzkiIHI9IjIyIi8+CiAgICA8Y2lyY2xlIGN4PSIxOTEiIGN5PSIxMzkiIHI9IjIyIi8+CiAgICA8cmVjdCB4PSI3NCIgeT0iMTc5IiB3aWR0aD0iMzY0IiBoZWlnaHQ9IjIwIi8+CiAgICA8Y2lyY2xlIGN4PSIxODYiIGN5PSIyNzAiIHI9IjI2Ii8+CiAgICA8Y2lyY2xlIGN4PSIzMjYiIGN5PSIyNzAiIHI9IjI2Ii8+CiAgICA8cGF0aCBkPSJNMTg2IDMxNyBDMjIyIDM1NSAyOTAgMzU1IDMyNiAzMTcgQTE2IDE2IDAgMCAxIDM0OSAzMzkgQzMwMSAzOTEgMjExIDM5MSAxNjMgMzM5IEExNiAxNiAwIDAgMSAxODYgMzE3WiIvPgogIDwvZz4KPC9zdmc+Cg==" />Sitefren
-        <span class="tag" id="versionBadge">Alpha <?= PS_VERSION ?></span>
-      </div>
-      <div class="top-right" id="topActions" hidden>
-        <button id="settingsBtn" class="quiet">Settings</button>
-        <a id="editorHelpLink" class="help-link" href="mailto:hello@raul.ws?subject=Sitefren%20help">Help</a>
-        <details id="accountMenu" class="account-menu">
-          <summary aria-label="More options">•••</summary>
-          <div class="account-menu-items">
-            <button id="diagnosticsBtn" class="quiet">Request details</button>
-            <button id="logoutBtn" class="quiet" aria-label="Sign out">Sign out</button>
-          </div>
-        </details>
-      </div>
-    </header>
     <main id="gate" class="gate">
-      <div class="welcome-icon" aria-hidden="true">✳</div>
-      <h1 id="gateTitle">Your site, in your hands.</h1>
-      <p id="gateText">Loading your editor…</p>
-      <form id="authForm" hidden>
-        <div id="setupCodeWrap">
-          <label for="setupCode">One-time setup code</label
-          ><input id="setupCode" autocomplete="off" spellcheck="false" />
-          <p class="hint">
-            Open <code>builder-state.php</code> in your hosting file manager. The code is on its
-            first line.
-          </p>
-          <p class="hint">
-            Sitefren automatically reports a random installation ID and app version to count
-            installs. Your site URL, content, and credentials are not sent. The analytics
-            server receives your hosting server's IP address.
-          </p>
-        </div>
-        <label for="password">Editor password</label
-        ><input
-          id="password"
-          type="password"
-          minlength="12"
-          maxlength="72"
-          required
-          autocomplete="current-password"
-        />
-        <p class="hint" id="passwordHint">Use at least 12 characters.</p>
-        <button class="primary" id="authButton" type="submit">Open editor →</button>
-      </form>
-      <p><a id="setupHelpLink" class="help-link" href="mailto:hello@raul.ws?subject=Sitefren%20help">Need a hand? Get help from Raul.</a></p>
-      <div id="checks" class="checks"></div>
+      <div class="gate-brand">
+        <?= ps_brand_mark() ?><span>Sitefren</span><span class="gate-version">Alpha <?= PS_VERSION ?></span>
+      </div>
+      <div class="gate-card">
+        <h1 id="gateTitle">Your site, in your hands.</h1>
+        <p id="gateText" class="gate-text">Loading your editor…</p>
+        <form id="authForm" hidden>
+          <div id="setupCodeWrap">
+            <label for="setupCode">One-time setup code</label
+            ><input id="setupCode" autocomplete="off" spellcheck="false" />
+            <p class="hint">
+              Open <code>builder-state.php</code> in your hosting file manager. The code is on its
+              first line.
+            </p>
+            <p class="hint">
+              Sitefren automatically reports a random installation ID and app version to count
+              installs. Your site URL, content, and credentials are not sent. The analytics
+              server receives your hosting server's IP address.
+            </p>
+          </div>
+          <label for="password">Editor password</label
+          ><input
+            id="password"
+            type="password"
+            minlength="12"
+            maxlength="72"
+            required
+            autocomplete="current-password"
+          />
+          <p class="hint" id="passwordHint">Use at least 12 characters.</p>
+          <button class="primary" id="authButton" type="submit">Open editor</button>
+        </form>
+        <div id="checks" class="checks"></div>
+      </div>
+      <p class="gate-help"><a id="setupHelpLink" href="mailto:hello@raul.ws?subject=Sitefren%20help">Need a hand? Get help from Raul.</a></p>
     </main>
     <div id="offlineNotice" class="offline-notice" role="status" hidden>You're offline. Keep this page open and reconnect before saving.</div>
     <main id="app" class="app" data-workspace="editor" hidden>
-      <nav class="workspace-switch" aria-label="Workspace">
-        <button id="chatWorkspaceBtn" type="button" aria-pressed="false">Chat</button>
-        <button id="editorWorkspaceBtn" type="button" aria-pressed="true">Editor</button>
-      </nav>
-      <aside class="sidebar">
-        <div class="side-head">
-          <span class="chat-eyebrow">FROM AN IDEA TO YOUR WEBSITE</span>
-          <h1>A little space<br />of your own.</h1>
-          <p>Tell us what you have in mind. We’ll help you make it.</p>
+      <nav class="rail" aria-label="Sitefren">
+        <div class="rail-brand">
+          <?= ps_brand_mark() ?>
+          <span class="brand-name">Sitefren</span>
+          <span class="version" id="versionBadge">Alpha <?= PS_VERSION ?></span>
         </div>
+        <div class="tabs" role="tablist" aria-label="Workspace views">
+          <button class="rail-item active" data-tab="preview" role="tab" aria-selected="true" type="button">
+            <?= ps_icon('preview') ?><span>Preview</span></button
+          ><button class="rail-item" data-tab="files" role="tab" aria-selected="false" type="button">
+            <?= ps_icon('files') ?><span>Files</span></button
+          ><button class="rail-item" data-tab="assets" role="tab" aria-selected="false" type="button">
+            <?= ps_icon('images') ?><span>Images</span></button
+          ><button class="rail-item" data-tab="history" role="tab" aria-selected="false" type="button">
+            <?= ps_icon('history') ?><span>History</span></button>
+        </div>
+        <div class="rail-actions" id="topActions" hidden>
+          <a id="editorHelpLink" class="rail-item" href="mailto:hello@raul.ws?subject=Sitefren%20help"
+            ><?= ps_icon('help') ?><span class="rail-label">Help</span></a
+          ><button id="settingsBtn" class="rail-item" type="button">
+            <?= ps_icon('settings') ?><span class="rail-label">Settings</span></button>
+          <details id="accountMenu" class="account-menu">
+            <summary class="rail-item" aria-label="Account and more options">
+              <?= ps_icon('account') ?><span class="rail-label">Account</span>
+            </summary>
+            <div class="account-menu-items">
+              <p class="menu-label" id="menuThemeLabel">Theme</p>
+              <div class="segmented" role="group" aria-labelledby="menuThemeLabel">
+                <button type="button" data-theme-choice="light" aria-pressed="false">Light</button
+                ><button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button
+                ><button type="button" data-theme-choice="system" aria-pressed="false">System</button>
+              </div>
+              <hr class="menu-divider" />
+              <button id="diagnosticsBtn" class="quiet menu-item" type="button">Request details</button>
+              <button id="logoutBtn" class="quiet menu-item" type="button" aria-label="Sign out">Sign out</button>
+            </div>
+          </details>
+        </div>
+      </nav>
+      <aside class="sidebar" aria-label="Chat">
+        <header class="side-head">
+          <h1>Sitefren</h1>
+          <span id="saveStatus" class="save-status" role="status">Draft saved</span>
+        </header>
         <div id="requestError" class="request-error" role="alert" hidden>
           <span id="requestErrorText"></span>
           <button id="dismissError" type="button" class="quiet">Dismiss</button>
         </div>
         <div id="conversation" class="conversation" aria-live="polite"></div>
         <div class="working" id="working" role="status" hidden>
-          <span class="spinner"></span><span>Designing your changes…</span>
+          <span class="spinner" aria-hidden="true"></span><span>Designing your changes…</span>
         </div>
         <div class="composer-wrap">
           <form id="chatForm" class="composer">
@@ -8935,159 +9957,165 @@ try {
                 </button>
               </div>
             </div>
-            <label for="prompt" class="subtle" hidden>Describe your website or a change</label
-            ><textarea
+            <textarea
               id="prompt"
               aria-label="Describe your website or a change"
               maxlength="5000"
               placeholder="Describe your website, or ask for a change…"
             ></textarea>
             <div class="composer-bottom">
-              <button type="button" id="attachBtn" class="quiet">+ Add image</button
-              ><button id="sendBtn" type="submit" class="primary">Create ↗</button>
+              <button type="button" id="attachBtn" class="quiet icon-button attach" aria-label="Add image"
+                title="Add image. You can also drop images here."><?= ps_icon('plus') ?></button
+              ><button id="providerStatus" class="provider-status" type="button">Connect your AI provider</button
+              ><button id="sendBtn" type="submit" class="primary send"><span id="sendLabel">Create</span><?= ps_icon('send') ?></button>
             </div>
           </form>
-          <p class="composer-note">Drop images here to add them.</p>
-          <button id="providerStatus" class="provider-status" type="button">Connect your AI provider</button>
         </div>
       </aside>
       <section class="workbench" aria-label="Website workspace">
-        <div class="workspace-heading">
-          <div><strong>Your website</strong><span id="saveStatus">Draft saved</span></div>
-          <button id="publishBtn" class="primary">Publish ↗</button>
-        </div>
-        <div class="toolbar">
-          <div class="tabs" role="tablist" aria-label="Workspace views">
-            <button class="active" data-tab="preview" role="tab" aria-selected="true">
-              Preview</button
-            ><button data-tab="files" role="tab" aria-selected="false">Files</button
-            ><button data-tab="assets" role="tab" aria-selected="false">Images</button
-            ><button data-tab="history" role="tab" aria-selected="false">History</button>
-          </div>
-
-          <div class="view-controls" id="viewControls">
-            <select id="pageSelect" aria-label="Preview page">
-              <option>index.html</option></select
-            ><button
-              id="desktopBtn"
-              class="active"
-              aria-label="Desktop preview"
-              aria-pressed="true"
-            >
-              ▱</button
-            ><button id="mobileBtn" aria-label="Mobile preview" aria-pressed="false">▯</button>
-          </div>
-        </div>
-          <aside id="sponsorSpot" class="sponsor-spot" aria-label="Advertisement from Sheepdog Host">
-            <a class="sponsor-link" href="https://sheepdoghost.com?utm_source=sitefren&amp;utm_medium=editor&amp;utm_campaign=hosting"
-              target="_blank" rel="sponsored noopener noreferrer">
-              <?php if (PS_SPONSOR_IMAGE !== ''): ?>
-                <img class="sponsor-image" src="<?= htmlspecialchars(PS_SPONSOR_IMAGE, ENT_QUOTES) ?>" alt="" />
-              <?php endif; ?>
-              <span class="sponsor-copy">
-                <span class="sponsor-label">Advertisement · Sheepdog Host</span>
-                <strong>A home for your website.</strong>
-                <span class="sponsor-cta">Explore hosting ↗</span>
-              </span>
-            </a>
-          </aside>
-        <div id="previewPanel" class="canvas">
-          <div id="previewActions" class="preview-actions" hidden>
-            <div>
-              <button id="editPageBtn" type="button">Edit</button
-              ><button id="selectElementBtn" type="button" aria-pressed="false">
-                Select for AI
-              </button>
-              <button id="selectionChatBtn" type="button" hidden>Continue in Chat →</button>
+        <div class="frame">
+          <div class="toolbar">
+            <div class="view-controls" id="viewControls">
+              <div class="address">
+                <?= ps_icon('globe') ?><select id="pageSelect" aria-label="Preview page">
+                  <option>index.html</option></select
+                ><?= ps_icon('chevron') ?><span class="address-status" id="previewAddress">Your next idea lives here</span>
+              </div>
+              <div class="segmented" role="group" aria-label="Preview size">
+                <button id="desktopBtn" class="active" type="button" aria-label="Desktop preview" aria-pressed="true">
+                  <?= ps_icon('desktop') ?></button
+                ><button id="mobileBtn" type="button" aria-label="Mobile preview" aria-pressed="false">
+                  <?= ps_icon('mobile') ?></button>
+              </div>
             </div>
-            <span id="previewHint"
-              >Edit your page, or select an element for AI.</span
-            >
+            <span id="frameTitle" class="frame-title" hidden></span>
+            <div id="previewActions" class="preview-actions" hidden>
+              <button id="editPageBtn" type="button"><?= ps_icon('edit') ?><span class="toolbar-label">Edit</span></button
+              ><button id="selectElementBtn" type="button" aria-pressed="false">
+                <?= ps_icon('select') ?><span id="selectElementLabel">Select for AI</span></button
+              ><button id="selectionChatBtn" type="button" hidden>Continue in Chat</button>
+              <span id="previewHint">Edit your page, or select an element for AI.</span>
+            </div>
+            <button id="publishBtn" class="primary publish" type="button"><?= ps_icon('publish') ?><span class="toolbar-label">Publish</span></button>
+            <div id="viewMenuWrap" class="view-menu">
+              <button id="viewMenuBtn" class="view-menu-button" type="button" aria-label="Views and tools"
+                aria-haspopup="menu" aria-expanded="false" aria-controls="viewMenu"><?= ps_icon('menu') ?></button>
+              <div id="viewMenu" class="view-menu-items" role="menu" aria-label="Views and tools" hidden>
+                <button id="viewMenuSelect" type="button" role="menuitemcheckbox" aria-checked="false" tabindex="-1">
+                  <?= ps_icon('select') ?><span id="viewMenuSelectLabel">Select for AI</span></button>
+                <hr class="menu-divider" role="separator" />
+                <button type="button" role="menuitemradio" data-view-choice="preview" aria-checked="true" tabindex="-1">
+                  <?= ps_icon('preview') ?>Preview</button>
+                <button type="button" role="menuitemradio" data-view-choice="files" aria-checked="false" tabindex="-1">
+                  <?= ps_icon('files') ?>Files</button>
+                <button type="button" role="menuitemradio" data-view-choice="assets" aria-checked="false" tabindex="-1">
+                  <?= ps_icon('images') ?>Images</button>
+                <button type="button" role="menuitemradio" data-view-choice="history" aria-checked="false" tabindex="-1">
+                  <?= ps_icon('history') ?>History</button>
+                <hr class="menu-divider" role="separator" />
+                <a id="viewMenuHelpLink" role="menuitem" tabindex="-1" href="mailto:hello@raul.ws?subject=Sitefren%20help"
+                  ><?= ps_icon('help') ?>Help</a>
+              </div>
+            </div>
           </div>
           <div id="visualBar" class="visual-bar" hidden>
             <span id="textEditHint">Click text or an image to edit.</span>
             <button id="saveVisualBtn" class="primary">Save changes</button>
             <button id="cancelVisualBtn">Cancel</button>
           </div>
-          <div id="floatingEditor" class="floating-editor" hidden>
-            <button id="closeFloatingEditor" type="button" aria-label="Close editing controls" class="floating-close">×</button>
-            <div id="textToolbar" class="text-toolbar" role="toolbar" aria-label="Text formatting">
-              <select id="textHeading" aria-label="Text style" disabled>
-                <option value="">Text style</option><option value="P">Paragraph</option>
-                <option value="H1">Heading 1</option><option value="H2">Heading 2</option>
-                <option value="H3">Heading 3</option><option value="H4">Heading 4</option>
-                <option value="H5">Heading 5</option><option value="H6">Heading 6</option>
-              </select>
-              <button type="button" data-text-command="bold" aria-label="Bold" aria-pressed="false" disabled><b>B</b></button>
-              <button type="button" data-text-command="italic" aria-label="Italic" aria-pressed="false" disabled><i>I</i></button>
-              <button type="button" data-text-command="underline" aria-label="Underline" aria-pressed="false" disabled><u>U</u></button>
-              <button type="button" id="textLinkBtn" disabled>Link</button>
-              <button type="button" data-text-command="unlink" disabled>Unlink</button>
-              <button type="button" data-text-command="clear" disabled>Clear formatting</button>
-            </div>
-            <div id="imageToolbar" class="image-toolbar" role="group" aria-label="Image editing" hidden>
-              <strong>Image</strong>
-              <label>Replace with<select id="imageAsset"><option value="">Choose an uploaded image</option></select></label>
-              <button id="replaceImageUpload" type="button">Upload replacement</button>
-              <label>Alt text<input id="editImageAlt" type="text" maxlength="500" placeholder="Describe the image" /></label>
-              <div class="image-size-controls">
-                <label>Width (%)<input id="editImageWidth" type="number" min="1" max="100" placeholder="Auto" /></label>
-                <label>Height (px)<input id="editImageHeight" type="number" min="1" max="4000" placeholder="Auto" /></label>
+          <div id="previewPanel" class="canvas">
+            <div id="floatingEditor" class="floating-editor" hidden>
+              <button id="closeFloatingEditor" type="button" aria-label="Close editing controls" class="floating-close">×</button>
+              <div id="textToolbar" class="text-toolbar" role="toolbar" aria-label="Text formatting">
+                <select id="textHeading" aria-label="Text style" disabled>
+                  <option value="">Text style</option><option value="P">Paragraph</option>
+                  <option value="H1">Heading 1</option><option value="H2">Heading 2</option>
+                  <option value="H3">Heading 3</option><option value="H4">Heading 4</option>
+                  <option value="H5">Heading 5</option><option value="H6">Heading 6</option>
+                </select>
+                <button type="button" data-text-command="bold" aria-label="Bold" aria-pressed="false" disabled><b>B</b></button>
+                <button type="button" data-text-command="italic" aria-label="Italic" aria-pressed="false" disabled><i>I</i></button>
+                <button type="button" data-text-command="underline" aria-label="Underline" aria-pressed="false" disabled><u>U</u></button>
+                <button type="button" id="textLinkBtn" disabled>Link</button>
+                <button type="button" data-text-command="unlink" disabled>Unlink</button>
+                <button type="button" data-text-command="clear" disabled>Clear formatting</button>
               </div>
-              <label>Fit<select id="editImageFit"><option value="">Original</option><option value="cover">Cover</option><option value="contain">Contain</option><option value="fill">Stretch</option></select></label>
-              <button id="removeVisualImage" type="button">Remove image</button>
-            </div>
-          </div>
-          <div class="preview-shell" id="previewShell">
-            <div class="browser-bar" aria-hidden="true">
-              <span class="address" id="previewAddress">Your next idea lives here</span>
-            </div>
-            <div id="emptyPreview" class="empty-preview">
-              <div class="illustration" aria-hidden="true"></div>
-              <h2>From a thought to a website.</h2>
-              <p>
-                Describe what you have in mind. Watch it take shape here, then make it your own.
-              </p>
-              <button id="demoBtn">Try a sample site ↗</button>
-              <p class="hint">No API key needed for the sample.</p>
-            </div>
-            <iframe
-              id="preview"
-              title="Isolated website preview"
-              sandbox="allow-scripts"
-              referrerpolicy="no-referrer"
-              hidden
-            ></iframe>
-          </div>
-        </div>
-        <div id="filesPanel" class="panel" hidden>
-          <div class="files-layout">
-            <div id="fileList" class="file-list"></div>
-            <div class="code-area">
-              <div class="code-title">
-                <span id="fileName">Select a file</span
-                ><button id="saveFileBtn" class="primary">Save draft</button>
+              <div id="imageToolbar" class="image-toolbar" role="group" aria-label="Image editing" hidden>
+                <strong>Image</strong>
+                <label>Replace with<select id="imageAsset"><option value="">Choose an uploaded image</option></select></label>
+                <button id="replaceImageUpload" type="button">Upload replacement</button>
+                <label>Alt text<input id="editImageAlt" type="text" maxlength="500" placeholder="Describe the image" /></label>
+                <div class="image-size-controls">
+                  <label>Width (%)<input id="editImageWidth" type="number" min="1" max="100" placeholder="Auto" /></label>
+                  <label>Height (px)<input id="editImageHeight" type="number" min="1" max="4000" placeholder="Auto" /></label>
+                </div>
+                <label>Fit<select id="editImageFit"><option value="">Original</option><option value="cover">Cover</option><option value="contain">Contain</option><option value="fill">Stretch</option></select></label>
+                <button id="removeVisualImage" type="button">Remove image</button>
               </div>
-              <textarea id="codeEditor" aria-label="File contents" spellcheck="false"></textarea>
+            </div>
+            <div class="preview-shell" id="previewShell">
+              <div id="emptyPreview" class="empty-preview">
+                <div class="illustration" aria-hidden="true"></div>
+                <h2>From a thought to a website.</h2>
+                <p>Describe what you have in mind. Watch it take shape here, then make it your own.</p>
+                <button id="demoBtn" type="button">Try a sample site</button>
+                <p class="hint">No API key needed for the sample.</p>
+              </div>
+              <iframe
+                id="preview"
+                title="Isolated website preview"
+                sandbox="allow-scripts"
+                referrerpolicy="no-referrer"
+                hidden
+              ></iframe>
             </div>
           </div>
+          <div id="filesPanel" class="panel" hidden>
+            <div class="files-layout">
+              <div id="fileList" class="file-list"></div>
+              <div class="code-area">
+                <div class="code-title">
+                  <span id="fileName">Select a file</span
+                  ><button id="saveFileBtn" class="primary">Save draft</button>
+                </div>
+                <textarea id="codeEditor" aria-label="File contents" spellcheck="false"></textarea>
+              </div>
+            </div>
+          </div>
+          <div id="assetsPanel" class="panel" hidden>
+            <div class="panel-head">
+              <div>
+                <h2>Your images</h2>
+                <p class="subtle">Add images, then ask the AI to use them. PNG, JPEG, WebP, GIF or SVG · Up to 2 MB each.</p>
+              </div>
+              <button id="uploadBtn" type="button"><?= ps_icon('plus') ?>Upload image</button>
+            </div>
+            <div id="assetGrid" class="asset-grid"></div>
+          </div>
+          <div id="historyPanel" class="panel" hidden>
+            <h2>Room to change your mind.</h2>
+            <p class="subtle">
+              Restore an earlier draft, then publish when you’re ready. The latest 10 draft versions
+              are kept.
+            </p>
+            <div id="historyList"></div>
+          </div>
         </div>
-        <div id="assetsPanel" class="panel" hidden>
-          <h2>Your images</h2>
-          <p class="subtle">
-            Add images, then ask the AI to use them. PNG, JPEG, WebP, or GIF · Up to 2 MB each.
-          </p>
-          <button id="uploadBtn">+ Upload image</button>
-          <div id="assetGrid" class="asset-grid"></div>
-        </div>
-        <div id="historyPanel" class="panel" hidden>
-          <h2>Room to change your mind.</h2>
-          <p class="subtle">
-            Restore an earlier draft, then publish when you’re ready. The latest 10 draft versions
-            are kept.
-          </p>
-          <div id="historyList"></div>
-        </div>
+      </section>
+      <div class="app-foot">
+        <aside id="sponsorSpot" class="sponsor-spot" aria-label="Advertisement from Sheepdog Host">
+          <a class="sponsor-link" href="https://sheepdoghost.com?utm_source=sitefren&amp;utm_medium=editor&amp;utm_campaign=hosting"
+            target="_blank" rel="sponsored noopener noreferrer">
+            <?php if (PS_SPONSOR_IMAGE !== ''): ?>
+              <img class="sponsor-image" src="<?= htmlspecialchars(PS_SPONSOR_IMAGE, ENT_QUOTES) ?>" alt="" />
+            <?php endif; ?>
+            <span class="sponsor-copy">
+              <span class="sponsor-label">Advertisement · Sheepdog Host</span>
+              <strong>A home for your website.</strong>
+              <span class="sponsor-cta">Explore hosting ↗</span>
+            </span>
+          </a>
+        </aside>
         <footer class="bench-footer">
           <span id="fileCount">0 files · Ready when you are</span
           ><a id="updateAvailable" class="update-link" href="https://github.com/raldjr/sitefren/releases"
@@ -9100,7 +10128,11 @@ try {
             ></span
           >
         </footer>
-      </section>
+      </div>
+      <nav class="workspace-switch" aria-label="Workspace">
+        <button id="chatWorkspaceBtn" type="button" aria-pressed="false"><?= ps_icon('chat') ?><span>Chat</span></button
+        ><button id="editorWorkspaceBtn" type="button" aria-pressed="true"><?= ps_icon('editor') ?><span>Editor</span></button>
+      </nav>
     </main>
     <dialog id="settingsDialog">
       <form id="settingsForm">
@@ -9110,8 +10142,9 @@ try {
         </p>
         <label for="provider">AI provider</label
         ><select id="provider">
-          <option value="openrouter">OpenRouter</option>
-          <option value="concentrate">Concentrate</option></select
+          <?php foreach (ps_providers() as $id => $provider): ?>
+          <option value="<?= htmlspecialchars($id) ?>"><?= htmlspecialchars($provider['name']) ?></option>
+          <?php endforeach; ?></select
         ><label for="apiKey">API key</label
         ><input
           id="apiKey"
@@ -9142,14 +10175,36 @@ try {
         <label class="inline-check" id="clearKeyLabel"
           ><input type="checkbox" id="clearKey" />Remove the saved key</label
         >
+        <h3 class="settings-section" id="settingsThemeLabel">Appearance</h3>
+        <div class="theme-setting">
+          <div class="segmented" role="group" aria-labelledby="settingsThemeLabel">
+            <button type="button" data-theme-choice="light" aria-pressed="false">Light</button
+            ><button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button
+            ><button type="button" data-theme-choice="system" aria-pressed="false">System</button>
+          </div>
+          <p class="hint">Applies right away and is remembered on this browser.</p>
+        </div>
+        <h3 class="settings-section">Updates</h3>
         <p class="hint" id="updateStatus">Sitefren <?= PS_VERSION ?> · Updates are checked while you use the editor.</p>
         <button type="button" id="checkUpdatesBtn">Check for updates</button>
         <button type="button" id="updateNowBtn" class="primary" hidden>Update now</button>
         <p><a id="releaseDownloads" class="help-link" href="https://github.com/raldjr/sitefren/releases"
           target="_blank" rel="noopener noreferrer">View releases and downloads ↗</a></p>
         <p class="hint">Update now verifies the official release and backs up your editor and private state. Your website files stay in place. Manual uploads are also supported.</p>
+        <h3 class="settings-section">App</h3>
         <button type="button" id="installAppBtn">Install Sitefren app</button>
         <p id="installAppStatus" class="hint">Open Sitefren from your home screen. An internet connection is needed to edit and publish.</p>
+        <div class="settings-about">
+          <h3 class="settings-section">About</h3>
+          <p class="hint">Sitefren Alpha <?= PS_VERSION ?> · <span id="fileCountAbout">0 files · Ready when you are</span></p>
+          <p class="about-credits">
+            Source: <a href="https://github.com/raldjr/sitefren" target="_blank" rel="noopener noreferrer">GitHub</a>
+          </p>
+          <p class="about-credits">
+            Built by <a href="https://raul.ws?utm_source=sitefren" target="_blank" rel="noopener noreferrer">Raul Aldrete</a> for
+            <a href="https://sheepdoghost.com?utm_source=sitefren" target="_blank" rel="noopener noreferrer">Sheepdog Host</a>
+          </p>
+        </div>
         <div class="dialog-actions">
           <button type="button" id="cancelSettings">Cancel</button
           ><button class="primary" type="submit">Save connection</button>
@@ -9253,6 +10308,7 @@ try {
         byId('editorWorkspaceBtn').setAttribute('aria-pressed', String(pane === 'editor'));
         byId('chatWorkspaceBtn').setAttribute('aria-pressed', String(pane === 'chat'));
         byId('accountMenu').open = false;
+        closeViewMenu();
       }
       byId('editorWorkspaceBtn').addEventListener('click', () => workspacePane('editor'));
       byId('chatWorkspaceBtn').addEventListener('click', () => workspacePane('chat'));
@@ -9261,18 +10317,47 @@ try {
       byId('accountMenu').querySelectorAll('button').forEach(button => button.addEventListener('click', () => { byId('accountMenu').open = false; }));
       document.addEventListener('click', event => { if (!byId('accountMenu').contains(event.target)) byId('accountMenu').open = false; });
       document.addEventListener('keydown', event => { if (event.key === 'Escape') byId('accountMenu').open = false; });
+      // The workspace fills the visible viewport; on phones this keeps the composer above the keyboard.
       function mobileViewport() {
         const height = window.visualViewport?.height || innerHeight;
         document.documentElement.style.setProperty('--visible-height', height + 'px');
-        const chrome = document.querySelector('.topbar').getBoundingClientRect().height +
-          document.querySelector('.workspace-switch').getBoundingClientRect().height +
-          byId('offlineNotice').getBoundingClientRect().height;
+        const chrome = byId('offlineNotice').getBoundingClientRect().height;
         document.documentElement.style.setProperty('--workspace-chrome', chrome + 'px');
       }
-      const mobileResize = new ResizeObserver(mobileViewport);
-      for (const node of [document.querySelector('.topbar'), document.querySelector('.workspace-switch'), byId('offlineNotice')]) mobileResize.observe(node);
+      new ResizeObserver(mobileViewport).observe(byId('offlineNotice'));
       addEventListener('resize', mobileViewport);
       window.visualViewport?.addEventListener('resize', mobileViewport);
+      // Theme choice is light, dark or system, remembered per browser. The inline
+      // script in <head> applies it before first paint; these keep it in sync.
+      const darkSchemeQuery = matchMedia('(prefers-color-scheme: dark)');
+      function savedThemeChoice() {
+        try {
+          return localStorage.getItem('sitefren-theme') || 'system';
+        } catch {
+          return 'system';
+        }
+      }
+      function applyTheme(choice) {
+        const dark = choice === 'dark' || (choice === 'system' && darkSchemeQuery.matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        document.querySelector('meta[name="theme-color"]').content = dark ? '#0d1117' : '#ffffff';
+        document.querySelectorAll('[data-theme-choice]').forEach((button) => {
+          button.setAttribute('aria-pressed', String(button.dataset.themeChoice === choice));
+        });
+      }
+      function chooseTheme(choice) {
+        try {
+          localStorage.setItem('sitefren-theme', choice);
+        } catch {
+          notice('This browser could not remember your theme choice.', true);
+        }
+        applyTheme(choice);
+      }
+      document.querySelectorAll('[data-theme-choice]').forEach((button) => {
+        button.addEventListener('click', () => chooseTheme(button.dataset.themeChoice));
+      });
+      darkSchemeQuery.addEventListener('change', () => applyTheme(savedThemeChoice()));
+      applyTheme(savedThemeChoice());
       let updateCheckStarted = false;
       let offeredVersion = null;
       async function checkUpdates(force = false) {
@@ -9443,6 +10528,7 @@ try {
         byId('diagnosticsBtn').disabled = false;
         byId('editorWorkspaceBtn').disabled = false;
         byId('chatWorkspaceBtn').disabled = false;
+        document.querySelectorAll('[data-theme-choice]').forEach((b) => (b.disabled = false));
       }
       async function run(action, data = {}, message = '') {
         if (busy) return;
@@ -9474,6 +10560,11 @@ try {
         if (className) el.className = className;
         return el;
       }
+      // Provider names come from the Settings list, which the server builds from ps_providers().
+      function providerName(id) {
+        const option = [...byId('provider').options].find((item) => item.value === id);
+        return option ? option.textContent : 'your AI provider';
+      }
       function render() {
         if (!state) return;
         syncSelection();
@@ -9494,13 +10585,13 @@ try {
           byId('setupCode').required = state.setup;
           byId('password').autocomplete = state.setup ? 'new-password' : 'current-password';
           byId('passwordHint').hidden = !state.setup;
-          byId('authButton').textContent = state.setup ? 'Set up my editor →' : 'Open editor →';
+          byId('authButton').textContent = state.setup ? 'Set up my editor' : 'Open editor';
           byId('checks').replaceChildren(
             ...[
-              'PHP ' + state.checks.php,
-              state.checks.curl ? 'PHP cURL available' : 'cURL needed for AI',
-              state.checks.writable ? 'Storage writable' : 'Check folder permissions',
-            ].map((t) => textElement('span', t, 'check')),
+              ['PHP ' + state.checks.php, true],
+              [state.checks.curl ? 'PHP cURL available' : 'cURL needed for AI', state.checks.curl],
+              [state.checks.writable ? 'Storage writable' : 'Check folder permissions', state.checks.writable],
+            ].map(([label, ok]) => textElement('span', label, ok ? 'check' : 'check warn')),
           );
           return;
         }
@@ -9509,18 +10600,22 @@ try {
           updateCheckStarted = true;
           checkUpdates();
         }
-        byId('providerStatus').textContent =
-          state.config.has_key && state.config.model
-            ? `Connected to ${state.config.provider === 'openrouter' ? 'OpenRouter' : 'Concentrate'}`
-            : 'Connect your AI provider';
-        byId('saveStatus').textContent = state.published_at
-          ? state.dirty
-            ? 'Unpublished changes'
-            : 'Published'
-          : 'Draft saved';
-        byId('sendBtn').textContent = Object.keys(state.files).length ? 'Update ↗' : 'Create ↗';
+        const connected = !!(state.config.has_key && state.config.model);
+        byId('providerStatus').textContent = connected
+          ? `Connected to ${providerName(state.config.provider)}`
+          : 'Connect your AI provider';
+        byId('providerStatus').classList.toggle('connected', connected);
+        const publishState = state.published_at ? (state.dirty ? 'changes' : 'published') : 'draft';
+        byId('saveStatus').dataset.status = publishState;
+        byId('saveStatus').textContent = {
+          changes: 'Unpublished changes',
+          published: 'Published',
+          draft: 'Draft saved',
+        }[publishState];
+        byId('sendLabel').textContent = Object.keys(state.files).length ? 'Update' : 'Create';
         byId('fileCount').textContent =
           `${Object.keys(state.files).length} text files · ${Object.keys(state.assets).length} images`;
+        byId('fileCountAbout').textContent = byId('fileCount').textContent;
         byId('requestErrorText').textContent = state.last_error || '';
         byId('requestError').hidden = !state.last_error;
         renderChat();
@@ -9543,8 +10638,9 @@ try {
           const intro = document.createElement('div');
           intro.className = 'welcome';
           intro.append(
-            textElement('h2', 'What would you like to make?'),
-            textElement('p', 'Start with an idea, a few words, or something you’ve already written.'),
+            document.querySelector('.rail-brand .mark').cloneNode(true),
+            textElement('h2', 'Hi! What should we make today?'),
+            textElement('p', 'Start with an idea, a few words, or something you’ve already written. I’ll sketch a first draft you can keep shaping.'),
           );
           const suggestions = document.createElement('div');
           suggestions.className = 'suggestions';
@@ -9553,7 +10649,7 @@ try {
             ['A portfolio', 'A minimal portfolio for my creative work'],
             ['A landing page', 'A landing page for my next big idea'],
           ]) {
-            const b = textElement('button', '+ ' + label);
+            const b = textElement('button', label);
             b.type = 'button';
             b.addEventListener('click', () => {
               byId('prompt').value = prompt;
@@ -9561,7 +10657,7 @@ try {
             });
             suggestions.append(b);
           }
-          const sample = textElement('button', 'Or try a sample website →', 'sample-link');
+          const sample = textElement('button', 'Or explore a sample website', 'sample-link');
           sample.id = 'chatDemoBtn'; sample.type = 'button';
           sample.addEventListener('click', () => byId('demoBtn').click());
           intro.append(suggestions, sample);
@@ -9690,16 +10786,17 @@ try {
       }
       function renderPreview() {
         const exists = !!state.files[currentPage];
-        byId('previewActions').hidden = !exists || !!visual;
+        byId('previewActions').hidden = previewActionsHidden();
+        renderViewMenu();
         byId('emptyPreview').hidden = exists;
         byId('preview').hidden = !exists;
+        // The page picker shows the file name, so the address only describes the mode.
         byId('previewAddress').textContent = exists
-          ? currentPage +
-            (visual
-              ? ' · Editing'
-              : selectionMode
-                ? ' · Select an element'
-                : ' · Draft preview')
+          ? visual
+            ? 'Editing'
+            : selectionMode
+              ? 'Select an element'
+              : 'Draft preview'
           : 'Your next idea lives here';
         const frame = byId('preview');
         frame.onload = null;
@@ -9769,7 +10866,7 @@ try {
         });
         const style = document.createElement('style');
         style.textContent =
-          '[data-pocket-select]{cursor:crosshair!important}[data-pocket-hover]{outline:2px dashed #c2410c!important;outline-offset:-2px}[data-pocket-selected]{outline:3px solid #c2410c!important;outline-offset:-3px}';
+          '[data-pocket-select]{cursor:crosshair!important}[data-pocket-hover]{outline:2px dashed #2563eb!important;outline-offset:-2px}[data-pocket-selected]{outline:3px solid #2563eb!important;outline-offset:-3px}';
         document.head.append(style);
       }
       function selectionBridge(token) {
@@ -9865,8 +10962,9 @@ try {
         byId('selectionLabel').textContent = selectedElement
           ? selectionName(selectedElement.node) + ' · ' + selectedElement.path
           : '';
-        byId('selectElementBtn').textContent = selectionMode ? 'Stop selecting' : 'Select for AI';
+        byId('selectElementLabel').textContent = selectionMode ? 'Stop selecting' : 'Select for AI';
         byId('selectElementBtn').setAttribute('aria-pressed', String(!!selectionMode));
+        renderViewMenu();
         byId('previewHint').textContent = selectionMode
           ? 'Select an element, then describe your change in Chat.'
           : 'Edit your page, or select an element for AI.';
@@ -10050,7 +11148,7 @@ try {
         });
         editableImages(doc).forEach((img, index) => { img.dataset.pocketImage = String(index); img.tabIndex = 0; });
         const style = doc.createElement('style');
-        style.textContent = 'img[data-pocket-image]{cursor:pointer}img[data-pocket-image-selected]{outline:3px solid #c2410c;outline-offset:3px}[data-pocket-text]{display:block;outline:none}[data-pocket-text]>:first-child{cursor:text;outline:1px dashed #c2410c;outline-offset:3px}[data-pocket-text]:focus-within>:first-child{outline:2px solid #c2410c}';
+        style.textContent = 'img[data-pocket-image]{cursor:pointer}img[data-pocket-image-selected]{outline:3px solid #2563eb;outline-offset:3px}[data-pocket-text]{display:block;outline:none}[data-pocket-text]>:first-child{cursor:text;outline:1px dashed #2563eb;outline-offset:3px}[data-pocket-text]:focus-within>:first-child{outline:2px solid #2563eb}';
         doc.head.append(style);
       }
       function visualBridge(token, makeTools) {
@@ -10417,6 +11515,7 @@ try {
         floatingAnchor = null;
         for (const id of ['saveVisualBtn', 'cancelVisualBtn', 'diagnosticsBtn'])
           byId(id).disabled = false;
+        document.querySelectorAll('[data-theme-choice]').forEach((el) => (el.disabled = false));
         byId('visualBar').hidden = !active;
       }
       function endVisual() {
@@ -10699,12 +11798,16 @@ try {
             return card;
           }),
         );
+        if (!Object.keys(state.assets).length)
+          byId('assetGrid').append(
+            textElement('p', 'No images yet. Upload one here or drop it on the chat box.', 'empty-note'),
+          );
       }
       function renderHistory() {
         byId('historyList').replaceChildren();
         if (!state.history.length)
           byId('historyList').append(
-            textElement('p', 'Your restore points will appear here as you edit.', 'subtle'),
+            textElement('p', 'Your restore points will appear here as you edit.', 'empty-note'),
           );
         for (const v of state.history) {
           const row = document.createElement('div');
@@ -10740,10 +11843,91 @@ try {
           b.setAttribute('aria-selected', String(b.dataset.tab === name));
         });
         byId('viewControls').hidden = name !== 'preview';
+        byId('previewActions').hidden = previewActionsHidden();
+        byId('frameTitle').hidden = name === 'preview';
+        byId('frameTitle').textContent = { files: 'Files', assets: 'Images', history: 'History' }[name] || '';
+        renderViewMenu();
+      }
+      // Edit and Select for AI only apply to a page that is shown in the Preview view.
+      function previewActionsHidden() {
+        return currentTab !== 'preview' || !state?.files[currentPage] || !!visual;
       }
       document
         .querySelectorAll('[data-tab]')
         .forEach((b) => b.addEventListener('click', () => tab(b.dataset.tab)));
+      // Phone view menu: Select for AI, the four views and Help in one compact menu.
+      // It reuses tab() and the Select for AI button, so desktop controls stay the source of truth.
+      function viewMenuItems() {
+        return [...byId('viewMenu').querySelectorAll('[role^="menuitem"]')].filter((item) => !item.hidden);
+      }
+      function renderViewMenu() {
+        byId('viewMenu').querySelectorAll('[data-view-choice]').forEach((item) => {
+          item.setAttribute('aria-checked', String(item.dataset.viewChoice === currentTab));
+        });
+        byId('viewMenuSelect').hidden = byId('previewActions').hidden;
+        byId('viewMenuSelect').setAttribute('aria-checked', String(!!selectionMode));
+        byId('viewMenuSelectLabel').textContent = byId('selectElementLabel').textContent;
+      }
+      function openViewMenu(focusLast = false) {
+        byId('viewMenu').hidden = false;
+        byId('viewMenuBtn').setAttribute('aria-expanded', 'true');
+        const items = viewMenuItems();
+        items[focusLast ? items.length - 1 : 0].focus();
+      }
+      function closeViewMenu(returnFocus = false) {
+        if (byId('viewMenu').hidden) return;
+        byId('viewMenu').hidden = true;
+        byId('viewMenuBtn').setAttribute('aria-expanded', 'false');
+        if (returnFocus) byId('viewMenuBtn').focus();
+      }
+      byId('viewMenuBtn').addEventListener('click', () => {
+        if (byId('viewMenu').hidden) openViewMenu();
+        else closeViewMenu();
+      });
+      byId('viewMenuBtn').addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          openViewMenu(event.key === 'ArrowUp');
+        } else if (event.key === 'Escape' && !byId('viewMenu').hidden) {
+          event.stopPropagation();
+          closeViewMenu(true);
+        }
+      });
+      byId('viewMenu').addEventListener('keydown', (event) => {
+        const items = viewMenuItems();
+        const index = items.indexOf(document.activeElement);
+        const target = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: items.length - 1 }[event.key];
+        if (target !== undefined) {
+          event.preventDefault();
+          items[(target + items.length) % items.length].focus();
+        } else if (event.key === 'Escape') {
+          // Stop here so Escape does not also cancel selection or editing behind the menu.
+          event.preventDefault();
+          event.stopPropagation();
+          closeViewMenu(true);
+        } else if (event.key === 'Tab') {
+          closeViewMenu();
+        } else if (event.key === ' ' && document.activeElement.tagName === 'A') {
+          event.preventDefault();
+          document.activeElement.click();
+        }
+      });
+      byId('viewMenu').querySelectorAll('[data-view-choice]').forEach((item) => {
+        item.addEventListener('click', () => {
+          closeViewMenu(true);
+          tab(item.dataset.viewChoice);
+        });
+      });
+      byId('viewMenuSelect').addEventListener('click', () => {
+        closeViewMenu(true);
+        byId('selectElementBtn').click();
+      });
+      byId('viewMenuHelpLink').addEventListener('click', () => closeViewMenu());
+      document.addEventListener('click', (event) => {
+        if (!byId('viewMenuWrap').contains(event.target)) closeViewMenu();
+      });
+      // Taps inside the preview frame never reach this document, but they move focus away.
+      addEventListener('blur', () => closeViewMenu());
       function confirmAction(title, text, label) {
         byId('confirmTitle').textContent = title;
         byId('confirmText').textContent = text;
@@ -11048,13 +12232,36 @@ try {
           e.returnValue = '';
         }
       });
+      // On phones the Editor view is mostly preview, so it stays invisible until the
+      // first preview has drawn and never opens on a blank frame.
+      function firstPreviewRendered() {
+        const frame = byId('preview');
+        const phoneEditor = matchMedia('(max-width: 720px)').matches && byId('app').dataset.workspace === 'editor';
+        if (!state.authenticated || frame.hidden || !phoneEditor) return Promise.resolve();
+        return new Promise((resolve) => {
+          const done = () => {
+            window.removeEventListener('message', onMessage);
+            clearTimeout(timer);
+            resolve();
+          };
+          const onMessage = (e) => {
+            if (e.source === frame.contentWindow && e.data?.type === 'pocket-rendered') done();
+          };
+          const timer = setTimeout(done, 1500);
+          window.addEventListener('message', onMessage);
+        });
+      }
       (async () => {
+        byId('app').classList.add('booting');
         try {
           state = await api('state');
           render();
+          await firstPreviewRendered();
         } catch (e) {
           byId('gateText').textContent = e.message;
           notice(e.message, true);
+        } finally {
+          byId('app').classList.remove('booting');
         }
       })();
     </script>

@@ -1,3 +1,26 @@
+# Alpha 0.3.0 release validation
+
+Checked on October 19, 2026, with PHP and Chromium via Playwright.
+
+- PHP syntax, 137 core, 79 installation, 47 update-notice, 41 installer,
+  54 HTTP (93 with the fixture transport), 47 browser (75 with the fixture
+  transport), 37 direct-editing and 28 mobile/PWA checks passed, together
+  with embedded JavaScript/image-drop checks. Browser, direct-editing and
+  mobile/PWA suites passed on repeated runs.
+- The redesigned editor was inspected at 1366, 1440 and 390px in light and
+  dark themes. Desktop rendering was compared against saved screenshots
+  while the phone layout changed. At 390x844 the phone Editor preview fills
+  82.1% of the screen, with no horizontal overflow or script errors.
+- Light and dark contrast was measured against WCAG AA for text, controls,
+  borders and focus rings. No orange color values remain in the editor.
+- The intermittent reconnect failure in the mobile/PWA suite reproduced on
+  0.2.5 under load (9 of 32 runs) and passed 32 of 32 with the phone
+  Editor render wait.
+- Vercel AI Gateway was added through a provider registry. Requests use
+  synthetic fixtures; its model filter was checked against the live public
+  catalog (228 of 414 models kept). No live provider request, shared host or
+  physical device was tested for this release.
+
 # Alpha 0.2.5 release validation
 
 Checked on September 8, 2026, with PHP and Chromium via Playwright.
