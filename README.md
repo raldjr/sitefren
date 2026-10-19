@@ -5,14 +5,14 @@
 An open-source AI website editor for shared hosting. Upload one PHP file,
 describe your site, and publish real HTML, CSS and JavaScript files you own.
 
-**Alpha 0.2.5** · **PHP 8.2+** · **AGPL-3.0-only**
+**Alpha 0.3.0** · **PHP 8.2+** · **AGPL-3.0-only**
 
-[Download sitefren.php](https://github.com/raldjr/sitefren/releases/download/v0.2.5/sitefren.php)
+[Download sitefren.php](https://github.com/raldjr/sitefren/releases/download/v0.3.0/sitefren.php)
 · [Get started](docs/INSTALLATION.md)
 · [Changes](CHANGELOG.md)
 · [Report a bug](https://github.com/raldjr/sitefren/issues/new/choose)
 
-![Sitefren editor showing chat, preview, direct text editing and element selection](docs/editor-preview.png)
+![Sitefren editor with the view rail, chat and a browser-style website preview](docs/editor-preview.png)
 
 ## A real website on the hosting you already have
 
@@ -28,7 +28,8 @@ separately by the provider you connect.
 - Edit text with a floating formatting bar; replace, resize and describe images directly in the preview.
 - Select an element and ask AI to change it.
 - Edit source files, upload images and preview desktop/mobile layouts.
-- Work with chat beside your website on desktop; switch views on phones.
+- Work with chat beside a browser-style preview on desktop; switch between Chat and Editor on phones.
+- Use light or dark mode, following your device or your own choice.
 - Install Sitefren on your home screen as a PWA; editing and publishing require internet.
 - Drag one or more images onto the prompt area, or click **+ Add image**.
 - Restore earlier drafts with History.
@@ -41,7 +42,7 @@ stylesheets, scripts and images, and continues to work independently of Sitefren
 
 ## Start in a few steps
 
-1. [Download sitefren.php](https://github.com/raldjr/sitefren/releases/download/v0.2.5/sitefren.php). If your browser displays source, save the raw file as `sitefren.php`.
+1. [Download sitefren.php](https://github.com/raldjr/sitefren/releases/download/v0.3.0/sitefren.php). If your browser displays source, save the raw file as `sitefren.php`.
 2. Upload **only that file** into an empty folder on compatible hosting.
 3. Visit `https://your-domain.example/sitefren.php` (include your folder if needed).
 4. Open the automatically created `builder-state.php` in your hosting file manager.

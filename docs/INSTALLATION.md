@@ -7,7 +7,7 @@ Built by **Raul Aldrete Jr.** for [Sheepdog Host](https://sheepdoghost.com).
 Upload one PHP file. Describe your website. Preview it. Publish real HTML, CSS,
 and JavaScript on the hosting account you already own.
 
-Sitefren is an **Alpha 0.2.5** application for small static websites, licensed under AGPL-3.0-only.
+Sitefren is an **Alpha 0.3.0** application for small static websites, licensed under AGPL-3.0-only.
 
 **One file to upload is a project requirement.** The customer uploads
 `sitefren.php`; the editor creates its own private state and published site files.
@@ -156,11 +156,18 @@ AI how to use it, review the draft, and Publish when ready.
 
 ## Focused workspaces and home-screen app
 
-On desktop, chat and the website editor sit side by side. On phones, use
-**Chat** and **Editor** to switch views. Resizing preserves unsent prompts and
+On desktop, a narrow rail on the left switches between Preview, Files, Images
+and History and holds Help, Settings and your account. Chat sits beside a
+browser-style preview whose toolbar holds the page picker, Edit, Select for AI
+and Publish. On phones, use **Chat** and **Editor** to switch views; the Editor
+view keeps one compact bar with the page picker, Edit, Publish and a menu for
+Select for AI, the other views and Help. Resizing preserves unsent prompts and
 unsaved code edits. A completed generation opens Editor.
 On phones, use **Continue in Chat** after selecting a page element to request an AI change.
-Request details and Sign out are available from the header’s **More options** menu. During direct editing,
+Request details, Sign out and the theme choice are in the **Account** menu.
+Light and dark themes follow your device by default; **Settings → Appearance**
+remembers a fixed choice on that browser. Settings → About shows the version and
+credits. During direct editing,
 inactive navigation collapses and Save/Cancel stay above the preview. Touch
 controls are larger, form text avoids automatic zoom, and floating panels adjust
 to the visible viewport when the keyboard opens.
