@@ -60,6 +60,7 @@ function curl_exec($ch){
                 $text=json_encode(['message'=>'Made the selected card red.','files'=>[],'delete'=>[],'edits'=>[['path'=>'index.html','find'=>'<article class="card" id="first">','replace'=>'<article class="card" id="first" style="background-color: red;">']]]);
             }
             if ($payload['model']==='fixture-invalid-json') $text='<html>private-model-output</html>';
+            if ($payload['model']==='fixture-repairable' && !str_contains($payload['input']??$payload['messages'][1]['content'],'REPAIR REQUEST')) $text='<html>private-model-output</html>';
             if ($payload['model']==='fixture-cutoff') $text='{"message":"Building","files":[{"path":"index.html","content":"unfinished';
             $response=$chatApi?['choices'=>[['finish_reason'=>'stop','message'=>['content'=>$text]]]]:['status'=>'completed','output'=>[['type'=>'message','content'=>[['type'=>'output_text','text'=>$text]]]]];
             if ($payload['model']==='fixture-cutoff') $response['usage']=['output_tokens'=>$payload['max_output_tokens']];

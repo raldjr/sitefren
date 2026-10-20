@@ -124,6 +124,11 @@ with tempfile.TemporaryDirectory(prefix='pocket-http-') as tmp:
         status,state=request('settings',{'clear_key':True})
         check(status==200 and not state['config']['has_key'],'Saved credentials can be removed')
         check(request('generate',{'prompt':'Build a site'})[0]==400,'Missing credentials fail before any network call')
+        status,styled=request('settings',{'style_preset':'dark','style_custom':''})
+        check(status==200 and styled['style']=={'preset':'dark','custom':''},'The website design style is saved')
+        check(request('settings',{'style_preset':'not-a-style'})[0]==400,'Unknown design styles are rejected over HTTP')
+        status,styled=request('settings',{'style_preset':'','style_custom':''})
+        check(status==200 and styled['style']['preset']=='','The AI can be left to choose the style again')
         if fixture:
             request('settings',{'provider':'concentrate','model':'fixture-invalid-json','api_key':'not-a-real-secret-fixture'})
             prior_files = state['files']
@@ -132,6 +137,7 @@ with tempfile.TemporaryDirectory(prefix='pocket-http-') as tmp:
             _,state=request('state')
             check(state['files']==prior_files and not state['pending'],'Malformed output preserves the draft and releases the job')
             check(state['last_request']['response_stage']=='invalid_json' and 'private-model-output' not in json.dumps(state),'HTTP diagnostics classify JSON failure without storing raw text')
+            check(state['last_request'].get('repair')=='failed','One repair attempt was made and recorded before failing')
         if fixture:
             dismissal={'request_id':state['last_request']['id'],'error':state['last_error']}
             diagnostics=state['last_request']
@@ -214,6 +220,12 @@ with tempfile.TemporaryDirectory(prefix='pocket-http-') as tmp:
             check(status==200 and 'Generated fixture site' in generated['files']['index.html'],'Vercel AI Gateway generation completes with progress enabled')
             status,catalog=request('models',{'provider':'vercel'})
             check(status==200 and [m['id'] for m in catalog['models']]==['fixture-model','fixture-zdr'],'Vercel AI Gateway model catalog loads through the provider registry')
+            request('settings',{'provider':'concentrate','model':'fixture-repairable'})
+            status,generated=request('generate',{'prompt':'Build my repaired site'})
+            check(status==200 and 'Generated fixture site' in generated['files']['index.html'],'A reply that fails once is repaired over HTTP')
+            _,state=request('state')
+            check(state['last_request']['repair']=='succeeded' and state['last_request']['outcome']=='completed','Request details record a successful repair')
+            check('private-model-output' not in json.dumps(state),'A repaired request stores no raw model text')
         status,state=request('logout',{})
         check(status==200 and not state['authenticated'] and 'files' not in state,'Signing out removes access to drafts')
         check('last_request' not in state,'Signed-out responses omit request diagnostics')

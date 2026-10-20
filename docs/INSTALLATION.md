@@ -440,6 +440,25 @@ directory index. It does not disable directory browsing in subfolders or block
 direct file URLs. Hosts should disable directory listing in server configuration;
 this application does not edit .htaccess or override custom index routing.
 
+## Design styles
+
+**Settings → Website style** sets the look the AI follows for every page and
+change. Choose one of six built-in styles, paste your own style guide (up to
+8,000 characters of colors, fonts, spacing and do's and don'ts), or let the AI
+choose per request. The guide is added to the AI's instructions; it describes
+appearance only and cannot change the reply format or the editor's safety
+checks. The style is saved with your private state, not in the published site.
+
+## Automatic repair
+
+When a model replies with an edit that is unreadable or fails validation, for
+example a text replacement that does not match the current file, Sitefren asks
+the same model once more, showing it the rejected reply and the exact error.
+The retry uses only the time left in the AI wait limit and is skipped with less
+than 30 seconds remaining. Cut-off output, refusals and connection errors are
+not retried. Request details show `repair` as `succeeded` or `failed`; the
+rejected reply is never stored. A repair is a second billed request.
+
 ## Structured AI edits
 
 Version 0.1.5 requests a strict JSON edit schema using Concentrate `text.format`

@@ -25,6 +25,7 @@ separately by the provider you connect.
 ## What you can do
 
 - Describe a website and refine it through conversation.
+- Pick a design style (clean, editorial, bold, local business, dark or soft) or paste your own style guide, so every change keeps one look.
 - Edit text with a floating formatting bar; replace, resize and describe images directly in the preview.
 - Select an element and ask AI to change it.
 - Edit source files, upload images and preview desktop/mobile layouts.
