@@ -1,6 +1,6 @@
 <?php
 /**
- * Sitefren 0.3.0 — an uploadable AI editor for small static websites.
+ * Sitefren 0.3.1 — an uploadable AI editor for small static websites.
  * SPDX-License-Identifier: AGPL-3.0-only
  * Copyright (c) 2026 Raul Aldrete Jr. and contributors
  * Built by Raul Aldrete Jr. for Sheepdog Host.
@@ -692,7 +692,7 @@
  */
 declare(strict_types=1);
 
-const PS_VERSION = '0.3.0';
+const PS_VERSION = '0.3.1';
 const PS_UPDATE_PUBLIC_KEY = 'TthJkmF58DxCfaw/0N6iRLhORlImuMT3brLGxKJV7jM=';
 // Optional embedded sponsor artwork (data:image/...;base64,...) preserves one-file delivery.
 const PS_SPONSOR_IMAGE = '';

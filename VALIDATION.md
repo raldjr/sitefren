@@ -1,3 +1,22 @@
+# Alpha 0.3.1 release validation
+
+Checked on October 20, 2026, with PHP and Chromium via Playwright.
+
+- PHP syntax, 162 core, 79 installation, 47 update-notice, 41 installer,
+  57 HTTP (100 with the fixture transport), 47 browser (75 with the fixture
+  transport), 37 direct-editing and 28 mobile/PWA checks passed, together
+  with embedded JavaScript/image-drop checks.
+- Design styles: every built-in guide is complete, the chosen or custom guide
+  reaches both Chat Completions and Responses requests, unknown styles and
+  oversized guides are rejected, and saving the style was exercised in the
+  browser Settings dialog.
+- Automatic repair: fixtures cover a repaired unreadable reply, a repaired
+  non-matching replacement, a failed repair, and no retry for cut-off output,
+  refusals or under 30 seconds remaining. Diagnostics record the outcome
+  without model text.
+- Requests use synthetic fixtures. Whether the styles improve output from
+  specific live models, shared hosts and physical devices were not tested.
+
 # Alpha 0.3.0 release validation
 
 Checked on October 19, 2026, with PHP and Chromium via Playwright.
