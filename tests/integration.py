@@ -79,7 +79,7 @@ with tempfile.TemporaryDirectory(prefix='pocket-http-') as tmp:
         check(request('setup',{'code':'wrong','password':'example-testing-passphrase'})[0]==401,'Reject a wrong ownership code')
         check(request('publish',{})[0]==401,'Reject publishing while signed out')
         check(request('check_updates',{})[0]==401,'Update checks require authentication')
-        check(request('update_now',{'version':'0.3.1'})[0]==401,'Installing updates requires authentication')
+        check(request('update_now',{'version':'0.3.2'})[0]==401,'Installing updates requires authentication')
         status,state=request('setup',{'code':code,'password':'example-testing-passphrase'})
         check(status==200 and state['authenticated'] and not state['setup'],'Owner can finish setup and sign in')
         check('Setup code:' not in (root/'builder-state.php').read_text(),'Setup clears the ownership token')
@@ -87,12 +87,12 @@ with tempfile.TemporaryDirectory(prefix='pocket-http-') as tmp:
         check(request('demo',{},token=False)[0]==403,'Reject authenticated mutations without CSRF')
         check(request('demo',verb='GET')[0]==405,'GET cannot mutate the project')
         check(request('check_updates',{},token=False)[0]==403,'Update checks require CSRF')
-        check(request('update_now',{'version':'0.3.1'},token=False)[0]==403,'Installing updates requires CSRF')
+        check(request('update_now',{'version':'0.3.2'},token=False)[0]==403,'Installing updates requires CSRF')
         check(request('update_now',verb='GET')[0]==405,'GET cannot install an update')
         update_status,update=request('check_updates',{})
         check(update_status==200 and update['status']==('checked' if fixture else 'disabled'),'Update checks respect host settings and parse fixture releases')
         if fixture:
-            check(update['available'] and update['version']=='0.3.1' and update['url']=='https://github.com/raldjr/sitefren/releases','New alpha releases return a fixed official download link')
+            check(update['available'] and update['version']=='0.3.2' and update['url']=='https://github.com/raldjr/sitefren/releases','New alpha releases return a fixed official download link')
             cached=(root/'builder-state.php').read_bytes()
             check(request('check_updates',{'force':True})[1]==update and (root/'builder-state.php').read_bytes()==cached,'Repeated and forced checks within a minute reuse cached data')
         status,state=request('demo',{})
@@ -124,6 +124,11 @@ with tempfile.TemporaryDirectory(prefix='pocket-http-') as tmp:
         status,state=request('settings',{'clear_key':True})
         check(status==200 and not state['config']['has_key'],'Saved credentials can be removed')
         check(request('generate',{'prompt':'Build a site'})[0]==400,'Missing credentials fail before any network call')
+        status,styled=request('settings',{'style_preset':'dark','style_custom':''})
+        check(status==200 and styled['style']=={'preset':'dark','custom':''},'The website design style is saved')
+        check(request('settings',{'style_preset':'not-a-style'})[0]==400,'Unknown design styles are rejected over HTTP')
+        status,styled=request('settings',{'style_preset':'','style_custom':''})
+        check(status==200 and styled['style']['preset']=='','The AI can be left to choose the style again')
         if fixture:
             request('settings',{'provider':'concentrate','model':'fixture-invalid-json','api_key':'not-a-real-secret-fixture'})
             prior_files = state['files']
@@ -132,6 +137,7 @@ with tempfile.TemporaryDirectory(prefix='pocket-http-') as tmp:
             _,state=request('state')
             check(state['files']==prior_files and not state['pending'],'Malformed output preserves the draft and releases the job')
             check(state['last_request']['response_stage']=='invalid_json' and 'private-model-output' not in json.dumps(state),'HTTP diagnostics classify JSON failure without storing raw text')
+            check(state['last_request'].get('repair')=='failed','One repair attempt was made and recorded before failing')
         if fixture:
             dismissal={'request_id':state['last_request']['id'],'error':state['last_error']}
             diagnostics=state['last_request']
@@ -214,6 +220,12 @@ with tempfile.TemporaryDirectory(prefix='pocket-http-') as tmp:
             check(status==200 and 'Generated fixture site' in generated['files']['index.html'],'Vercel AI Gateway generation completes with progress enabled')
             status,catalog=request('models',{'provider':'vercel'})
             check(status==200 and [m['id'] for m in catalog['models']]==['fixture-model','fixture-zdr'],'Vercel AI Gateway model catalog loads through the provider registry')
+            request('settings',{'provider':'concentrate','model':'fixture-repairable'})
+            status,generated=request('generate',{'prompt':'Build my repaired site'})
+            check(status==200 and 'Generated fixture site' in generated['files']['index.html'],'A reply that fails once is repaired over HTTP')
+            _,state=request('state')
+            check(state['last_request']['repair']=='succeeded' and state['last_request']['outcome']=='completed','Request details record a successful repair')
+            check('private-model-output' not in json.dumps(state),'A repaired request stores no raw model text')
         status,state=request('logout',{})
         check(status==200 and not state['authenticated'] and 'files' not in state,'Signing out removes access to drafts')
         check('last_request' not in state,'Signed-out responses omit request diagnostics')

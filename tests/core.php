@@ -150,6 +150,54 @@ try {
     rejects(fn()=>ps_parse_provider('openrouter',['choices'=>[['finish_reason'=>'length','message'=>['content'=>'{"message":"partial']]]]),'Reject truncated OpenRouter output');
     rejects(fn()=>ps_parse_provider('concentrate',['status'=>'incomplete','output'=>[]]),'Reject incomplete Concentrate output');
     rejects(fn()=>ps_parse_provider('openrouter',['choices'=>[['message'=>['content'=>'not JSON']]]]),'Reject malformed model output');
+    // Design styles.
+    foreach (ps_style_presets() as $id => $preset) {
+        check($preset['name'] !== '' && $preset['summary'] !== '' && strlen($preset['guide']) > 400 && strlen($preset['guide']) < PS_STYLE_GUIDE_LIMIT, $id.' has a complete design style');
+    }
+    $styled=$s; $styled['style']=['preset'=>'editorial','custom'=>''];
+    $payload=ps_provider_payload(['provider'=>'openrouter','api_key'=>'k','model'=>'m'],$styled,'Build');
+    check(str_contains($payload['messages'][0]['content'],'<style_guide>') && str_contains($payload['messages'][0]['content'],'Mood: thoughtful, literary'),'A chosen design style reaches the system prompt');
+    $payload=ps_provider_payload(['provider'=>'concentrate','api_key'=>'k','model'=>'m'],$styled,'Build');
+    check(str_contains($payload['instructions'],'<style_guide>'),'Responses API providers receive the design style too');
+    $payload=ps_provider_payload(['provider'=>'openrouter','api_key'=>'k','model'=>'m'],$s,'Build');
+    check(!str_contains($payload['messages'][0]['content'],'<style_guide>'),'No design style is sent when the AI chooses');
+    $styled['style']=['preset'=>'custom','custom'=>'Use #123456 for every heading.'];
+    $payload=ps_provider_payload(['provider'=>'openrouter','api_key'=>'k','model'=>'m'],$styled,'Build');
+    check(str_contains($payload['messages'][0]['content'],'Use #123456 for every heading.'),'A custom style guide reaches the system prompt');
+    check(ps_style(['files'=>[]])===['preset'=>'','custom'=>''],'Older state files default to letting the AI choose');
+    rejects(fn()=>ps_validate_style(['preset'=>'unknown','custom'=>'']),'Unknown design styles are rejected');
+    rejects(fn()=>ps_validate_style(['preset'=>'custom','custom'=>str_repeat('a',PS_STYLE_GUIDE_LIMIT+1)]),'Oversized style guides are rejected');
+    // One repair attempt for unreadable or invalid replies.
+    $config=['provider'=>'openrouter','api_key'=>'fixture-key','model'=>'fixture-model','timeout'=>180];
+    $valid=ps_json(['message'=>'Added contact','files'=>[['path'=>'contact.html','content'=>'<!doctype html><h1>Contact</h1>']],'delete'=>[]]);
+    $chat=fn($text)=>['choices'=>[['finish_reason'=>'stop','message'=>['content'=>$text]]]];
+    $calls=[];
+    $result=ps_generate($config,$s,'Add a contact page',function($provider,$request)use(&$calls,$chat,$valid){
+        $calls[]=$request['messages'][1]['content'];
+        return $chat(count($calls)===1?'<html>not json</html>':$valid);
+    });
+    check(count($calls)===2 && $result['files'][0]['path']==='contact.html' && $GLOBALS['ps_transport']['repair']==='succeeded','Unreadable output gets one successful repair attempt');
+    check(str_contains($calls[1],'REPAIR REQUEST') && str_contains($calls[1],'edit format was unreadable') && str_contains($calls[1],'<html>not json</html>'),'The repair request shows the model its reply and the exact error');
+    $calls=[];
+    $badEdit=ps_json(['message'=>'Changed','files'=>[],'delete'=>[],'edits'=>[['path'=>'index.html','find'=>'text that is not there','replace'=>'x']]]);
+    ps_generate($config,$s,'Change the title',function($provider,$request)use(&$calls,$chat,$valid,$badEdit){
+        $calls[]=$request;
+        return $chat(count($calls)===1?$badEdit:$valid);
+    });
+    check(count($calls)===2 && str_contains($calls[1]['messages'][1]['content'],'did not match exactly one place'),'A replacement that does not match is repaired with the validation error');
+    $calls=0;
+    rejects(function()use(&$calls,$config,$s,$chat){ps_generate($config,$s,'Build',function()use(&$calls){$calls++;return ['choices'=>[['finish_reason'=>'length','message'=>['content'=>'{"message":"part']]]];});},'Cut-off output still fails');
+    check($calls===1,'Cut-off output is not retried');
+    $calls=0;
+    rejects(function()use(&$calls,$config,$s,$chat){ps_generate($config,$s,'Build',function()use(&$calls){$calls++;return ['choices'=>[['message'=>['refusal'=>'no']]]];});},'Refusals still fail');
+    check($calls===1,'Refusals are not retried');
+    $calls=0;
+    rejects(function()use(&$calls,$config,$s,$chat){ps_generate(['timeout'=>30]+$config,$s,'Build',function()use(&$calls,$chat){$calls++;return $chat('not json');});},'Unreadable output fails without enough time left');
+    check($calls===1,'No repair is attempted with less than 30 seconds left');
+    $calls=0;
+    rejects(function()use(&$calls,$config,$s,$chat){ps_generate($config,$s,'Build',function()use(&$calls,$chat){$calls++;return $chat('still not json');});},'A failed repair reports the error');
+    check($calls===2 && $GLOBALS['ps_transport']['repair']==='failed' && $GLOBALS['ps_transport']['repair_first_stage']==='invalid_json','A failed repair is recorded without retrying again');
+    check(!str_contains(ps_json($GLOBALS['ps_transport']),'still not json'),'Repair diagnostics do not store model text');
     rejects(fn()=>ps_validate_config(['provider'=>'custom','model'=>'m','api_key'=>'k']),'Fixed provider list blocks arbitrary network destinations');
     rejects(fn()=>ps_validate_config(['provider'=>'openrouter','model'=>'m','api_key'=>"key\r\nInjected: yes"]),'Reject header injection in credentials');
     check(ps_ai_timeout(ps_config($s))===180,'Older state files receive the new 180-second default');

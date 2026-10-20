@@ -1,7 +1,7 @@
 {
-    "version": "0.3.0",
-    "sha256": "39b7406392f8d5bae7c548f6d1aa973b1bf4577b3b653bb1536f2f840f274bc8",
-    "size": 486683,
+    "version": "0.3.1",
+    "sha256": "91490c137c3a061eb93b6da5c472f2d9fccdea9c82817d3a54e6d63539ce752b",
+    "size": 502440,
     "php_min": "8.2.0",
     "php_max": "9.0.0",
     "schema": 1

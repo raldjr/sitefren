@@ -7,7 +7,7 @@ Built by **Raul Aldrete Jr.** for [Sheepdog Host](https://sheepdoghost.com).
 Upload one PHP file. Describe your website. Preview it. Publish real HTML, CSS,
 and JavaScript on the hosting account you already own.
 
-Sitefren is an **Alpha 0.3.0** application for small static websites, licensed under AGPL-3.0-only.
+Sitefren is an **Alpha 0.3.1** application for small static websites, licensed under AGPL-3.0-only.
 
 **One file to upload is a project requirement.** The customer uploads
 `sitefren.php`; the editor creates its own private state and published site files.
@@ -439,6 +439,25 @@ prevents the usual root listing only when the server serves index.html as a
 directory index. It does not disable directory browsing in subfolders or block
 direct file URLs. Hosts should disable directory listing in server configuration;
 this application does not edit .htaccess or override custom index routing.
+
+## Design styles
+
+**Settings → Website style** sets the look the AI follows for every page and
+change. Choose one of six built-in styles, paste your own style guide (up to
+8,000 characters of colors, fonts, spacing and do's and don'ts), or let the AI
+choose per request. The guide is added to the AI's instructions; it describes
+appearance only and cannot change the reply format or the editor's safety
+checks. The style is saved with your private state, not in the published site.
+
+## Automatic repair
+
+When a model replies with an edit that is unreadable or fails validation, for
+example a text replacement that does not match the current file, Sitefren asks
+the same model once more, showing it the rejected reply and the exact error.
+The retry uses only the time left in the AI wait limit and is skipped with less
+than 30 seconds remaining. Cut-off output, refusals and connection errors are
+not retried. Request details show `repair` as `succeeded` or `failed`; the
+rejected reply is never stored. A repair is a second billed request.
 
 ## Structured AI edits
 

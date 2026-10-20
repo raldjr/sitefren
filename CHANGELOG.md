@@ -1,5 +1,16 @@
 # Changes
 
+## 0.3.1 — October 20, 2026
+
+- Add Settings → Website style with six built-in design styles (clean,
+  editorial, bold, local business, dark studio and soft) or your own style
+  guide. The AI follows the chosen style for every page and change.
+- Repair unreadable or invalid AI replies with one automatic retry that shows
+  the model its rejected reply and the exact error, within the time left in
+  the wait limit. Request details show whether the repair succeeded.
+- Ask the AI to make sensible choices instead of asking first, and to use
+  clear placeholders instead of invented business details.
+
 ## 0.3.0 — October 19, 2026
 
 - Redesign the editor: a narrow rail for views, Help, Settings and account;
